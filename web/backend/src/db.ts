@@ -137,6 +137,18 @@ try {
 } catch {
   // Column already exists (e.g. after first run)
 }
+try {
+  db.exec('ALTER TABLE user_settings ADD COLUMN isGlobal INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // Column already exists
+}
+
+// Device claim visibility on global network
+try {
+  db.exec('ALTER TABLE claims ADD COLUMN showInGlobal INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // Column already exists
+}
 
 // Opaque public user id (cannot reverse to Google userId); used in device list, friends API, poke target
 db.exec(`
@@ -147,7 +159,74 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_user_public_ids_publicId ON user_public_ids(publicId);
 `);
 
+// Social groups (public / private with invite code)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS groups (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT,
+    visibility  TEXT NOT NULL CHECK (visibility IN ('public', 'private')),
+    inviteCode  TEXT UNIQUE,
+    ownerUserId TEXT NOT NULL,
+    createdAt   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_groups_visibility ON groups(visibility);
+  CREATE INDEX IF NOT EXISTS idx_groups_inviteCode ON groups(inviteCode);
 
+  CREATE TABLE IF NOT EXISTS group_members (
+    groupId   TEXT NOT NULL,
+    userId    TEXT NOT NULL,
+    role      TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+    status    TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+    createdAt TEXT NOT NULL,
+    PRIMARY KEY (groupId, userId),
+    FOREIGN KEY (groupId) REFERENCES groups(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_group_members_userId ON group_members(userId);
+  CREATE INDEX IF NOT EXISTS idx_group_members_status ON group_members(groupId, status);
+`);
+
+// Permission to set animation on owner's device(s)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS animation_grants (
+    id          TEXT PRIMARY KEY,
+    ownerUserId TEXT NOT NULL,
+    deviceId    TEXT,
+    granteeType TEXT NOT NULL CHECK (granteeType IN ('user', 'group')),
+    granteeId   TEXT NOT NULL,
+    createdAt   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_animation_grants_owner ON animation_grants(ownerUserId);
+  CREATE INDEX IF NOT EXISTS idx_animation_grants_grantee ON animation_grants(granteeType, granteeId);
+`);
+
+// Messenger bot account links (telegram now; bale later)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bot_links (
+    userId             TEXT NOT NULL,
+    platform           TEXT NOT NULL CHECK (platform IN ('telegram', 'bale')),
+    platformChatId     TEXT,
+    platformUsername   TEXT,
+    linkedAt           TEXT,
+    verifyCode         TEXT,
+    verifyExpiresAt    TEXT,
+    PRIMARY KEY (userId, platform)
+  );
+  CREATE INDEX IF NOT EXISTS idx_bot_links_verify ON bot_links(platform, verifyCode);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_bot_links_chat ON bot_links(platform, platformChatId)
+    WHERE platformChatId IS NOT NULL;
+`);
+
+// Local username/password accounts (self-registration)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS local_accounts (
+    username     TEXT PRIMARY KEY COLLATE NOCASE,
+    userId       TEXT NOT NULL UNIQUE,
+    passwordHash TEXT NOT NULL,
+    salt         TEXT NOT NULL,
+    createdAt    TEXT NOT NULL
+  );
+`);
 
 // ---------------------------------------------------------------------------
 //  Session store backed by better-sqlite3

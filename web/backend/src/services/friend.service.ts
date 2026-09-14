@@ -11,9 +11,15 @@ const stmtAreFriends = db.prepare(
   'SELECT 1 FROM friends WHERE (userId = ? AND friendId = ?) OR (userId = ? AND friendId = ?) LIMIT 1'
 );
 
-const stmtGetSettings = db.prepare('SELECT onlyFriendsCanPoke, publicFriends FROM user_settings WHERE userId = ?');
+const stmtGetSettings = db.prepare(
+  'SELECT onlyFriendsCanPoke, publicFriends, isGlobal FROM user_settings WHERE userId = ?'
+);
 const stmtSetSettings = db.prepare(
-  'INSERT INTO user_settings (userId, onlyFriendsCanPoke, publicFriends) VALUES (?, ?, ?) ON CONFLICT(userId) DO UPDATE SET onlyFriendsCanPoke = excluded.onlyFriendsCanPoke, publicFriends = excluded.publicFriends'
+  `INSERT INTO user_settings (userId, onlyFriendsCanPoke, publicFriends, isGlobal)
+   VALUES (?, ?, ?, COALESCE((SELECT isGlobal FROM user_settings WHERE userId = ?), 0))
+   ON CONFLICT(userId) DO UPDATE SET
+     onlyFriendsCanPoke = excluded.onlyFriendsCanPoke,
+     publicFriends = excluded.publicFriends`
 );
 
 export function getFriendIds(userId: string): string[] {
@@ -45,7 +51,7 @@ export function getPublicFriends(userId: string): boolean {
 export function setPublicFriends(userId: string, value: boolean): void {
   const row = stmtGetSettings.get(userId) as { onlyFriendsCanPoke?: number } | undefined;
   const onlyFriendsCanPoke = row ? (row.onlyFriendsCanPoke ?? 0) !== 0 : false;
-  stmtSetSettings.run(userId, onlyFriendsCanPoke ? 1 : 0, value ? 1 : 0);
+  stmtSetSettings.run(userId, onlyFriendsCanPoke ? 1 : 0, value ? 1 : 0, userId);
 }
 
 /** Friend pairs where both users have publicFriends enabled. No settings row = public (same as getPublicFriends). */
@@ -84,5 +90,5 @@ export function getOnlyFriendsCanPoke(userId: string): boolean {
 export function setOnlyFriendsCanPoke(userId: string, value: boolean): void {
   const row = stmtGetSettings.get(userId) as { publicFriends?: number } | undefined;
   const publicFriends = row ? (row.publicFriends ?? 1) !== 0 : true;
-  stmtSetSettings.run(userId, value ? 1 : 0, publicFriends ? 1 : 0);
+  stmtSetSettings.run(userId, value ? 1 : 0, publicFriends ? 1 : 0, userId);
 }

@@ -39,9 +39,64 @@ export const friendRequestSchema = z.object({
 export const meSettingsSchema = z.object({
   onlyFriendsCanPoke: z.boolean().optional(),
   publicFriends: z.boolean().optional(),
-}).refine((d) => d.onlyFriendsCanPoke !== undefined || d.publicFriends !== undefined, {
-  message: 'At least one of onlyFriendsCanPoke or publicFriends is required',
+  isGlobal: z.boolean().optional(),
+}).refine(
+  (d) =>
+    d.onlyFriendsCanPoke !== undefined ||
+    d.publicFriends !== undefined ||
+    d.isGlobal !== undefined,
+  {
+    message: 'At least one of onlyFriendsCanPoke, publicFriends, or isGlobal is required',
+  }
+);
+
+// PATCH /api/me/devices/:deviceId
+export const meDeviceSettingsSchema = z.object({
+  showInGlobal: z.boolean(),
 });
+export const meDeviceIdParamSchema = z.object({
+  deviceId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9:_-]+$/),
+});
+
+// Groups
+export const createGroupSchema = z.object({
+  name: z.string().min(1).max(64).transform((s) => s.trim()).pipe(z.string().min(1)),
+  description: z.string().max(280).optional(),
+  visibility: z.enum(['public', 'private']),
+});
+export const groupIdParamSchema = z.object({
+  groupId: z.string().length(24).regex(/^[a-f0-9]+$/),
+});
+export const joinByCodeSchema = z.object({
+  code: z.string().min(4).max(16).transform((s) => s.trim().toUpperCase()),
+});
+export const memberDecisionSchema = z.object({
+  userPublicId: z.string().length(24).regex(/^[a-f0-9]+$/),
+  decision: z.enum(['approved', 'rejected']),
+});
+
+// Animation grants
+export const createAnimationGrantSchema = z.object({
+  deviceId: z.string().min(1).max(128).regex(/^[a-zA-Z0-9:_-]+$/).nullable().optional(),
+  granteeType: z.enum(['user', 'group']),
+  granteeId: z.string().min(1).max(64), // publicUserId (24 hex) or groupId (24 hex)
+});
+export const grantIdParamSchema = z.object({
+  grantId: z.string().length(24).regex(/^[a-f0-9]+$/),
+});
+export const setAnimationSchema = z.object({
+  libraryId: z.string().min(1).max(128).optional(),
+  filename: z.string().min(1).max(256).optional(),
+  animationId: z.string().min(1).max(128).optional(),
+}).refine((d) => d.libraryId || d.filename || d.animationId, {
+  message: 'libraryId, filename, or animationId is required',
+});
+
+// Bot link
+export const botPlatformParamSchema = z.object({
+  platform: z.enum(['telegram', 'bale']),
+});
+
 
 // DELETE /api/library/batch  &  POST /api/library/batch-download
 export const libraryBatchSchema = z.object({

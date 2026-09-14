@@ -9,6 +9,7 @@ import { pokeSchema, pokeUserSchema, claimSchema, friendRequestSchema, meSetting
 import * as deviceService from '../services/device.service';
 import * as claimService from '../services/claim.service';
 import * as friendService from '../services/friend.service';
+import * as socialService from '../services/social.service';
 import * as userService from '../services/user.service';
 import * as socketService from '../services/socket.service';
 import { ensurePublicUserId, getUserIdFromPublicId } from '../services/publicUserId.service';
@@ -40,9 +41,16 @@ router.post('/poke', requireNotBanned, validate(pokeSchema), (req, res) => {
   }
 
   const claim = claimService.getClaimByDevice(device.id);
-  if (claim && friendService.getOnlyFriendsCanPoke(claim.userId)) {
-    if (!friendService.areFriends(claim.userId, user.id)) {
-      return res.status(403).json({ error: 'Only friends can poke this QBIT' });
+  if (claim) {
+    if (friendService.getOnlyFriendsCanPoke(claim.userId)) {
+      if (!friendService.areFriends(claim.userId, user.id)) {
+        return res.status(403).json({ error: 'Only friends can poke this QBIT' });
+      }
+    } else {
+      const reason = socialService.canPokeReason(user.id, claim.userId);
+      if (reason) {
+        return res.status(403).json({ error: reason });
+      }
     }
   }
 
@@ -80,6 +88,11 @@ router.post('/poke/user', requireNotBanned, validate(pokeUserSchema), (req, res)
   const targetUserId = getUserIdFromPublicId(targetPublicUserId);
   if (!targetUserId) {
     return res.status(404).json({ error: 'User not found' });
+  }
+
+  const reason = socialService.canPokeReason(sender.id, targetUserId);
+  if (reason) {
+    return res.status(403).json({ error: reason });
   }
 
   const onlineUsersMap = socketService.getOnlineUsersMap();
@@ -306,7 +319,8 @@ router.get('/me/settings', (req, res) => {
   const user = req.user as AppUser;
   const onlyFriendsCanPoke = friendService.getOnlyFriendsCanPoke(user.id);
   const publicFriends = friendService.getPublicFriends(user.id);
-  res.json({ onlyFriendsCanPoke, publicFriends });
+  const isGlobal = socialService.getIsGlobal(user.id);
+  res.json({ onlyFriendsCanPoke, publicFriends, isGlobal });
 });
 
 // PATCH /api/me/settings
@@ -315,12 +329,18 @@ router.patch('/me/settings', requireNotBanned, validate(meSettingsSchema), (req,
     return res.status(401).json({ error: 'Login required' });
   }
   const user = req.user as AppUser;
-  const { onlyFriendsCanPoke, publicFriends } = req.body as { onlyFriendsCanPoke?: boolean; publicFriends?: boolean };
+  const { onlyFriendsCanPoke, publicFriends, isGlobal } = req.body as {
+    onlyFriendsCanPoke?: boolean;
+    publicFriends?: boolean;
+    isGlobal?: boolean;
+  };
   if (onlyFriendsCanPoke !== undefined) friendService.setOnlyFriendsCanPoke(user.id, onlyFriendsCanPoke);
   if (publicFriends !== undefined) friendService.setPublicFriends(user.id, publicFriends);
+  if (isGlobal !== undefined) socialService.setIsGlobal(user.id, isGlobal);
   res.json({
     onlyFriendsCanPoke: friendService.getOnlyFriendsCanPoke(user.id),
     publicFriends: friendService.getPublicFriends(user.id),
+    isGlobal: socialService.getIsGlobal(user.id),
   });
 });
 

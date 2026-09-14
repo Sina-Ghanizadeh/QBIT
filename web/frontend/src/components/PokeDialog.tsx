@@ -6,8 +6,7 @@ interface Props {
   user: User | null;
   /** targetId is an opaque poke token from backend, not the claim/friend device id. */
   onPoke: (targetId: string, text: string, bitmapData?: BitmapPayload) => void;
-  onClaim: (device: Device) => void;
-  onUnclaim: (device: Device) => void;
+  onUnclaim?: (device: Device) => void;
   onAddFriend: (device: Device) => void;
   onClose: () => void;
   isLoggedIn: boolean;
@@ -109,7 +108,6 @@ export default function PokeDialog({
   device,
   user,
   onPoke,
-  onClaim,
   onUnclaim,
   onAddFriend,
   onClose,
@@ -226,12 +224,17 @@ export default function PokeDialog({
 
             {isMyDevice && (
               <>
-                <button
-                  className="btn-claim-link unclaim"
-                  onClick={() => onUnclaim(device)}
-                >
-                  Unclaim this device
-                </button>
+                {onUnclaim && (
+                  <button
+                    className="btn-claim-link unclaim"
+                    onClick={() => onUnclaim(device)}
+                  >
+                    Unclaim this device
+                  </button>
+                )}
+                <p className="poke-devices-hint">
+                  Manage devices from the Devices page.
+                </p>
                 {onOnlyFriendsCanPokeChange != null && (
                   <label className="poke-setting-switch">
                     <span className="poke-setting-switch-label">Only friends can poke this QBIT</span>
@@ -300,14 +303,6 @@ export default function PokeDialog({
                 onClick={() => onAddFriend(device)}
               >
                 Add friend
-              </button>
-            )}
-            {!device.claimedBy && (
-              <button
-                className="btn-claim-link"
-                onClick={() => onClaim(device)}
-              >
-                Claim this device
               </button>
             )}
           </>

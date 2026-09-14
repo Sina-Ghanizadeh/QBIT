@@ -27,6 +27,13 @@ export const LOCAL_AUTH_PASSWORD = (process.env.LOCAL_AUTH_PASSWORD || '').trim(
 export const LOCAL_AUTH_ENABLED =
   LOCAL_AUTH_USERNAME.length > 0 && LOCAL_AUTH_PASSWORD.length >= 8;
 
+// Allow users to self-register local accounts (default: on). Set to "false" to disable.
+export const LOCAL_REGISTRATION_ENABLED =
+  (process.env.LOCAL_REGISTRATION_ENABLED || 'true').trim().toLowerCase() !== 'false';
+
+// Local auth UI/API available if env bootstrap account OR registration is enabled
+export const LOCAL_AUTH_AVAILABLE = LOCAL_AUTH_ENABLED || LOCAL_REGISTRATION_ENABLED;
+
 // ---- Data / library ----
 export const LIBRARY_DIR = process.env.LIBRARY_DIR || '/data';
 
@@ -195,5 +202,9 @@ export const FAILED_LOGIN_DELAY_MS = 800;
 export const ADMIN_USERNAME_MAX_LEN = 64;
 export const ADMIN_PASSWORD_MIN_LEN = 8;
 export const ADMIN_PASSWORD_MAX_LEN = 128;
+
+// ---- Telegram bot (optional) ----
+export const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+export const TELEGRAM_BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || '').trim();
 
 export { NODE_ENV, isProduction };

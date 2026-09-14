@@ -6,13 +6,26 @@ interface Props {
   apiUrl: string;
   onClose: () => void;
   onClaimed: () => void;
-  socket: { on: (ev: string, fn: (data: { result: string }) => void) => void; off: (ev: string, fn: (data: { result: string }) => void) => void } | null;
+  socket: {
+    on: (ev: string, fn: (data: { result: string }) => void) => void;
+    off: (ev: string, fn: (data: { result: string }) => void) => void;
+  } | null;
+  /** When true, use device.id directly (Devices page) — no manual ID entry */
+  knownDevice?: boolean;
 }
 
-export default function ClaimDialog({ device, apiUrl, onClose, onClaimed, socket }: Props) {
-  const [deviceIdFull, setDeviceIdFull] = useState('');
+export default function ClaimDialog({
+  device,
+  apiUrl,
+  onClose,
+  onClaimed,
+  socket,
+  knownDevice = false,
+}: Props) {
+  const [deviceIdFull, setDeviceIdFull] = useState(knownDevice ? device.id : '');
   const [status, setStatus] = useState<'idle' | 'pending' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+
   useEffect(() => {
     if (!socket) return;
     const handler = (data: { result: string }) => {
@@ -20,7 +33,8 @@ export default function ClaimDialog({ device, apiUrl, onClose, onClaimed, socket
         onClaimed();
         onClose();
       } else if (data.result === 'timeout') {
-        onClose();
+        setStatus('error');
+        setErrorMsg('Timed out waiting for confirmation on device');
       } else if (data.result === 'rejected') {
         setStatus('error');
         setErrorMsg('Claim was declined on device');
@@ -33,7 +47,8 @@ export default function ClaimDialog({ device, apiUrl, onClose, onClaimed, socket
   }, [socket, onClaimed, onClose]);
 
   const handleSubmit = async () => {
-    if (!deviceIdFull.trim()) return;
+    const id = knownDevice ? device.id : deviceIdFull.trim();
+    if (!id) return;
 
     setStatus('pending');
     setErrorMsg('');
@@ -45,7 +60,7 @@ export default function ClaimDialog({ device, apiUrl, onClose, onClaimed, socket
         credentials: 'include',
         body: JSON.stringify({
           targetId: device.pokeToken,
-          deviceIdFull: deviceIdFull.trim().toUpperCase(),
+          deviceIdFull: id,
         }),
       });
 
@@ -63,11 +78,13 @@ export default function ClaimDialog({ device, apiUrl, onClose, onClaimed, socket
     }
   };
 
+  const canSubmit = knownDevice ? !!device.id : deviceIdFull.trim().length > 0;
+
   return (
     <div className="poke-overlay" onClick={onClose}>
       <div className="poke-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="poke-header">
-          <span className="poke-title">Claim: {device.name}</span>
+          <span className="poke-title">Add device: {device.name}</span>
           <button className="poke-close" onClick={onClose}>
             &times;
           </button>
@@ -86,34 +103,36 @@ export default function ClaimDialog({ device, apiUrl, onClose, onClaimed, socket
           </div>
         ) : (
           <>
-            <p className="claim-description">
-              Enter the 12-character device ID. Confirm by long-press on the QBIT.
-            </p>
-
-            <input
-              className="poke-input"
-              type="text"
-              placeholder="e.g. 30A0E710B894"
-              maxLength={12}
-              value={deviceIdFull}
-              onChange={(e) => setDeviceIdFull(e.target.value.toUpperCase())}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSubmit();
-              }}
-              autoFocus
-              style={{ fontFamily: 'monospace', letterSpacing: '0.1em' }}
-            />
-
-            {errorMsg && (
-              <div className="claim-error">{errorMsg}</div>
+            {knownDevice ? (
+              <p className="claim-description">
+                Device ID <code>{device.id}</code>. Send a claim request, then long-press on the
+                QBIT to accept.
+              </p>
+            ) : (
+              <>
+                <p className="claim-description">
+                  Enter the device ID, then long-press on the QBIT to confirm.
+                </p>
+                <input
+                  className="poke-input"
+                  type="text"
+                  placeholder="Device ID"
+                  maxLength={64}
+                  value={deviceIdFull}
+                  onChange={(e) => setDeviceIdFull(e.target.value.trim())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSubmit();
+                  }}
+                  autoFocus
+                  style={{ fontFamily: 'monospace', letterSpacing: '0.05em' }}
+                />
+              </>
             )}
 
-            <button
-              className="btn btn-poke"
-              onClick={handleSubmit}
-              disabled={deviceIdFull.trim().length !== 12}
-            >
-              Send Claim Request
+            {errorMsg && <div className="claim-error">{errorMsg}</div>}
+
+            <button className="btn btn-poke" onClick={handleSubmit} disabled={!canSubmit}>
+              Send claim request
             </button>
           </>
         )}

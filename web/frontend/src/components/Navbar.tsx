@@ -13,6 +13,7 @@ interface Props {
 interface AuthProviders {
   google: boolean;
   local: boolean;
+  register?: boolean;
 }
 
 const GOOGLE_ICON = (
@@ -36,17 +37,22 @@ const GOOGLE_ICON = (
   </svg>
 );
 
-const TABS: { id: Page; label: string }[] = [
+const TABS: { id: Page; label: string; requiresAuth?: boolean }[] = [
+  { id: 'dashboard', label: 'Home', requiresAuth: true },
+  { id: 'devices', label: 'Devices', requiresAuth: true },
   { id: 'network', label: 'Network' },
+  { id: 'groups', label: 'Groups', requiresAuth: true },
   { id: 'flash', label: 'Flash' },
   { id: 'library', label: 'Library' },
 ];
 
 export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [providers, setProviders] = useState<AuthProviders>({ google: true, local: false });
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [providers, setProviders] = useState<AuthProviders>({ google: true, local: false, register: false });
   const [localUser, setLocalUser] = useState('');
   const [localPass, setLocalPass] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [localBusy, setLocalBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -59,7 +65,11 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
       .then((r) => (r.ok ? r.json() : null))
       .then((p) => {
         if (p && typeof p.google === 'boolean' && typeof p.local === 'boolean') {
-          setProviders(p);
+          setProviders({
+            google: p.google,
+            local: p.local,
+            register: !!p.register,
+          });
         }
       })
       .catch(() => {});
@@ -79,7 +89,8 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
   useEffect(() => {
     const updateIndicator = () => {
       const container = tabsRef.current;
-      const activeIndex = Math.max(0, TABS.findIndex((tab) => tab.id === page));
+      const visibleTabs = TABS.filter((tab) => !tab.requiresAuth || user);
+      const activeIndex = Math.max(0, visibleTabs.findIndex((tab) => tab.id === page));
       const activeTab = tabRefs.current[activeIndex];
       if (!container || !activeTab) return;
       setIndicatorStyle({
@@ -92,17 +103,26 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
     updateIndicator();
     window.addEventListener('resize', updateIndicator);
     return () => window.removeEventListener('resize', updateIndicator);
-  }, [page]);
+  }, [page, user]);
 
   useEffect(() => {
     const container = tabsRef.current;
-    const activeIndex = Math.max(0, TABS.findIndex((tab) => tab.id === page));
+    const visibleTabs = TABS.filter((tab) => !tab.requiresAuth || user);
+    const activeIndex = Math.max(0, visibleTabs.findIndex((tab) => tab.id === page));
     const activeTab = tabRefs.current[activeIndex];
     if (!container || !activeTab) return;
     requestAnimationFrame(() => {
       activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     });
-  }, [page]);
+  }, [page, user]);
+
+  const finishAuth = (data: User) => {
+    onUserChange?.(data);
+    setMenuOpen(false);
+    setLocalPass('');
+    setDisplayName('');
+    setLocalError(null);
+  };
 
   const handleLocalLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -120,9 +140,35 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
         setLocalError(typeof data.error === 'string' ? data.error : 'Login failed');
         return;
       }
-      onUserChange?.(data as User);
-      setMenuOpen(false);
-      setLocalPass('');
+      finishAuth(data as User);
+    } catch {
+      setLocalError('Network error');
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  const handleRegister = async (e: FormEvent) => {
+    e.preventDefault();
+    setLocalError(null);
+    setLocalBusy(true);
+    try {
+      const res = await fetch(`${apiUrl}/auth/register`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: localUser,
+          password: localPass,
+          displayName: displayName.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLocalError(typeof data.error === 'string' ? data.error : 'Registration failed');
+        return;
+      }
+      finishAuth(data as User);
     } catch {
       setLocalError('Network error');
     } finally {
@@ -149,7 +195,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
             opacity: indicatorStyle.visible ? 1 : 0,
           }}
         />
-        {TABS.map((tab, index) => (
+        {TABS.filter((tab) => !tab.requiresAuth || user).map((tab, index) => (
           <button
             key={tab.id}
             ref={(el) => {
@@ -201,8 +247,48 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                   </a>
                 )}
                 {providers.local && (
-                  <form className="login-local-form" onSubmit={handleLocalLogin}>
-                    <div className="login-local-title">Local account</div>
+                  <form
+                    className="login-local-form"
+                    onSubmit={authMode === 'register' ? handleRegister : handleLocalLogin}
+                  >
+                    {providers.register && (
+                      <div className="login-mode-switch">
+                        <button
+                          type="button"
+                          className={authMode === 'login' ? 'active' : ''}
+                          onClick={() => {
+                            setAuthMode('login');
+                            setLocalError(null);
+                          }}
+                        >
+                          Sign in
+                        </button>
+                        <button
+                          type="button"
+                          className={authMode === 'register' ? 'active' : ''}
+                          onClick={() => {
+                            setAuthMode('register');
+                            setLocalError(null);
+                          }}
+                        >
+                          Sign up
+                        </button>
+                      </div>
+                    )}
+                    <div className="login-local-title">
+                      {authMode === 'register' ? 'Create account' : 'Local account'}
+                    </div>
+                    {authMode === 'register' && (
+                      <input
+                        className="login-local-input"
+                        type="text"
+                        autoComplete="nickname"
+                        placeholder="Display name (optional)"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        maxLength={64}
+                      />
+                    )}
                     <input
                       className="login-local-input"
                       type="text"
@@ -211,11 +297,15 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                       value={localUser}
                       onChange={(e) => setLocalUser(e.target.value)}
                       required
+                      minLength={3}
+                      maxLength={32}
+                      pattern="[A-Za-z0-9_]+"
+                      title="3–32 characters: letters, numbers, underscore"
                     />
                     <input
                       className="login-local-input"
                       type="password"
-                      autoComplete="current-password"
+                      autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
                       placeholder="Password"
                       value={localPass}
                       onChange={(e) => setLocalPass(e.target.value)}
@@ -224,13 +314,19 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                     />
                     {localError && <div className="login-local-error">{localError}</div>}
                     <button className="login-local-submit" type="submit" disabled={localBusy}>
-                      {localBusy ? 'Signing in…' : 'Sign in'}
+                      {localBusy
+                        ? authMode === 'register'
+                          ? 'Creating…'
+                          : 'Signing in…'
+                        : authMode === 'register'
+                          ? 'Create account'
+                          : 'Sign in'}
                     </button>
                   </form>
                 )}
                 {noProviders && (
                   <div className="login-menu-empty">
-                    No login configured. Set Google OAuth or LOCAL_AUTH_* in .env
+                    No login configured. Set Google OAuth or enable local registration.
                   </div>
                 )}
               </div>

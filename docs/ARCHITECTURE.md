@@ -165,6 +165,9 @@ Entry: `src/index.ts` — starts two HTTP servers, device WebSocket, Socket.io, 
 | Auth | Google OAuth 2.0 (Passport) + express-session |
 | Devices / poke | Online list, poke delivery (incl. pre-rendered bitmaps for CJK/emoji) |
 | Claim / friends | Device ownership, friend requests, poke gating |
+| Social (Global + Groups) | `isGlobal` / `showInGlobal`, groups join flows, scoped network APIs, `canPoke` |
+| Animation grants | Permission for users/groups to push `set_animation` to claimed devices |
+| Telegram bot | Optional long-poll bot; account link via one-time code |
 | Library | Upload / list / star / download `.qgif`; zip batch |
 | Reports / bans | User reports; IP / user bans |
 | Users | User records; opaque public IDs |
@@ -177,6 +180,10 @@ Entry: `src/index.ts` — starts two HTTP servers, device WebSocket, Socket.io, 
 
 - `/auth/*` — login / me / logout
 - `/api/devices`, `/api/poke`, `/api/claim`, `/api/friends*`, `/api/me/settings`
+- `/api/me/devices`, `/api/me/profile`, `/api/me/animation-grants`, `/api/me/bots`
+- `/api/groups/*` — public list, create, join, requests, leave
+- `/api/network/global`, `/api/network/groups/:groupId`
+- `/api/devices/:deviceId/animation` — push animation (grant-gated)
 - `/api/library/*`
 - `/api/report`
 - `/health`
@@ -190,7 +197,9 @@ React 19 + Vite SPA. Main pages:
 
 | Page | Purpose |
 |------|---------|
-| **Network** | Real-time device / user graph (`vis-network`) |
+| **Home (Dashboard)** | Global flag, device visibility, animation grants, Telegram link |
+| **Network** | Global / Group / Live graph modes (`vis-network`; user → device spokes) |
+| **Groups** | Public browse, private invite codes, create, approve join requests |
 | **Flash** | Browser-based firmware flasher |
 | **Library** | Community animation repository |
 
@@ -216,10 +225,14 @@ Docker images: `seanchangx/qbit-backend`, `seanchangx/qbit-frontend`.
 
 | Capability | Where it lives |
 |------------|----------------|
-| **Network graph** | Frontend + Socket.io + online device registry |
-| **Poke** | Frontend → API → device WS; optional MQTT publish on device |
+| **Network graph** | Frontend + Socket.io + scoped `/api/network/*` (Global / Group / Live) |
+| **Global visibility** | `user_settings.isGlobal`, `claims.showInGlobal` |
+| **Groups** | Public/private groups, invite codes, pending join approval |
+| **Poke** | Frontend → API → device WS or Socket.io; gated by Friends **or** both Global **or** shared group (`onlyFriendsCanPoke` still overrides on devices) |
 | **Claim / unclaim** | API + on-device long-press confirmation |
 | **Friends** | Friend token flow; poke permissions; public pairs |
+| **Animation grants** | Owner grants user/group permission; `POST /api/devices/:id/animation` → WS `set_animation` |
+| **Telegram bot** | Optional `TELEGRAM_BOT_TOKEN`; link via dashboard code + `/start CODE` |
 | **Library** | Community `.qgif` upload / star / download |
 | **Flash** | In-app flasher + standalone `tools/flasher` (GitHub Pages) |
 | **On-device UI** | Weather, timer, games, settings |
@@ -227,6 +240,7 @@ Docker images: `seanchangx/qbit-backend`, `seanchangx/qbit-frontend`.
 | **MQTT / HA** | Local broker + discovery entities |
 | **Admin / moderation** | Ban, reports, broadcast notify |
 | **Webcam → OLED** | Local dashboard WebSocket stream |
+| **User dashboard** | Web SPA Home after login |
 
 ---
 
@@ -352,7 +366,7 @@ Implementation: `firmware/src/mqtt_ha.*` and MQTT helpers in `firmware/src/netwo
 
 | Store | Typical path | Contents |
 |-------|--------------|----------|
-| SQLite (`better-sqlite3`, WAL) | `/data/qbit.db` | sessions, users, claims, library, stars, device records, bans, reports |
+| SQLite (`better-sqlite3`, WAL) | `/data/qbit.db` | sessions, users, claims (+ `showInGlobal`), library, stars, device records, bans, reports, friends, user_settings (`isGlobal`, poke flags), groups, group_members, animation_grants, bot_links |
 | Files | `/data/files/` | Library `.qgif` blobs |
 | Secrets | `/data/secrets.json` | Auto-generated secrets if unset |
 
@@ -424,10 +438,11 @@ See `web/docker-compose.yml` and `web/.env.example` (Google OAuth credentials re
 | Backend process | `web/backend/src/index.ts` | API :3001, admin :3002, `/device` WS, Socket.io |
 | Main Express app | `web/backend/src/app.ts` | User-facing routes |
 | Admin Express app | `web/backend/src/adminApp.ts` | Admin API + static UI |
-| User SPA | `web/frontend/src/main.tsx` | Network / Flash / Library |
+| User SPA | `web/frontend/src/main.tsx` | Home / Network / Groups / Flash / Library |
 | Admin SPA | `web/admin/src/main.tsx` | Operator UI |
 | Firmware | `firmware/src/main.cpp` | Device RTOS runtime |
 | Local device HTTP | AsyncWebServer :80 | Captive portal + dashboard |
+| Telegram bot | `web/backend/src/services/telegram.bot.ts` | Optional; started from `index.ts` when token set |
 | Prod compose | `web/docker-compose.yml` | `qbit-backend` + `qbit-frontend` |
 | Dev compose | `web/docker-compose.dev.yml` | Backend + Vite |
 
@@ -435,7 +450,7 @@ See `web/docker-compose.yml` and `web/.env.example` (Google OAuth credentials re
 
 ## 13. One-line summary
 
-**QBIT = ESP32 companion (local UI + optional MQTT) + Node/React cloud (Network, Poke, Library, Flash)** — MQTT is the home-automation bridge, not the cloud poke path.
+**QBIT = ESP32 companion (local UI + optional MQTT) + Node/React cloud (Global/Groups/Friends Network, Poke, Library, Flash, optional Telegram)** — MQTT is the home-automation bridge, not the cloud poke path.
 
 ---
 

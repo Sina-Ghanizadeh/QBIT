@@ -15,6 +15,8 @@ export interface Device {
 
 export interface UserSettings {
   onlyFriendsCanPoke: boolean;
+  publicFriends?: boolean;
+  isGlobal?: boolean;
 }
 
 export interface User {
@@ -30,4 +32,36 @@ export interface OnlineUser {
   avatar?: string;
   connectedAt: string;
   socketIds: string[];
+}
+
+export interface NetworkDeviceNode {
+  deviceId: string;
+  pokeToken: string | null;
+  name: string;
+  online: boolean;
+  showInGlobal?: boolean;
+  version?: string;
+  connectedAt?: string;
+}
+
+export interface NetworkUserNode {
+  publicUserId: string;
+  displayName: string;
+  avatar: string;
+  isGlobal: boolean;
+  online: boolean;
+  devices: NetworkDeviceNode[];
+}
+
+export interface GroupInfo {
+  id: string;
+  name: string;
+  description: string;
+  visibility: 'public' | 'private';
+  inviteCode?: string;
+  ownerPublicUserId: string;
+  createdAt: string;
+  memberRole?: string;
+  memberStatus?: string;
+  memberCount?: number;
 }

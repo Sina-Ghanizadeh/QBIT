@@ -12,6 +12,7 @@ import app, { sessionMiddleware } from './app';
 import adminApp from './adminApp';
 import * as deviceService from './services/device.service';
 import * as socketService from './services/socket.service';
+import { startTelegramBot } from './services/telegram.bot';
 import db from './db';
 import logger from './logger';
 
@@ -40,6 +41,7 @@ socketService.setupSocketIo(httpServer, sessionMiddleware);
 
 httpServer.listen(PORT, () => {
   logger.info({ port: PORT }, 'QBIT backend listening');
+  startTelegramBot();
 });
 
 adminHttpServer.listen(ADMIN_PORT, ADMIN_HOST, () => {
