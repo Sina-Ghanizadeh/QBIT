@@ -1,0 +1,233 @@
+"use strict";
+// ---------------------------------------------------------------------------
+//  Health check route
+// ---------------------------------------------------------------------------
+// Sensitive fields (emails, IPs) are only shown when the request includes
+// the correct HEALTH_SECRET query parameter.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const crypto_1 = __importDefault(require("crypto"));
+const config_1 = require("../config");
+const deviceService = __importStar(require("../services/device.service"));
+const claimService = __importStar(require("../services/claim.service"));
+const socketService = __importStar(require("../services/socket.service"));
+const libraryService = __importStar(require("../services/library.service"));
+const router = (0, express_1.Router)();
+// Server start time (for uptime calculation)
+const SERVER_START = Date.now();
+// ---------------------------------------------------------------------------
+//  Helpers
+// ---------------------------------------------------------------------------
+function formatUptime(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60) % 60;
+    const h = Math.floor(s / 3600) % 24;
+    const d = Math.floor(s / 86400);
+    const parts = [];
+    if (d > 0)
+        parts.push(`${d}d`);
+    if (h > 0)
+        parts.push(`${h}h`);
+    if (m > 0)
+        parts.push(`${m}m`);
+    if (parts.length === 0)
+        parts.push(`${s}s`);
+    return parts.join(' ');
+}
+function pad(str, len) {
+    return str + ' '.repeat(Math.max(0, len - str.length));
+}
+function drawTable(headers, rows) {
+    const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] || '').length)));
+    const sep = (left, mid, right, fill) => left + widths.map((w) => fill.repeat(w + 2)).join(mid) + right;
+    const line = (cells) => '|' + cells.map((c, i) => ' ' + pad(c, widths[i]) + ' ').join('|') + '|';
+    const lines = [];
+    lines.push(sep('+', '+', '+', '-'));
+    lines.push(line(headers));
+    lines.push(sep('+', '+', '+', '-'));
+    for (const row of rows)
+        lines.push(line(row));
+    lines.push(sep('+', '+', '+', '-'));
+    return lines.join('\n');
+}
+/** Check if the request has the correct health secret via Authorization header */
+function hasSecret(req) {
+    if (!config_1.HEALTH_SECRET)
+        return false;
+    const authHeader = (req.headers['authorization'] || '');
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token)
+        return false;
+    try {
+        return crypto_1.default.timingSafeEqual(Buffer.from(token), Buffer.from(config_1.HEALTH_SECRET));
+    }
+    catch {
+        return false;
+    }
+}
+// ---------------------------------------------------------------------------
+//  GET /health
+// ---------------------------------------------------------------------------
+router.get('/', (req, res) => {
+    const format = req.query.format;
+    const now = Date.now();
+    const showSensitive = hasSecret(req);
+    const claims = claimService.getAllClaims();
+    const onlineUsers = socketService.getOnlineUsersMap();
+    const devices = deviceService.getDevicesRaw();
+    if (format === 'json') {
+        const devicesPayload = Array.from(devices.values()).map((d) => {
+            const base = {
+                id: d.id,
+                name: d.name,
+                version: d.version,
+                connectedAt: d.connectedAt.toISOString(),
+                uptime: formatUptime(now - d.connectedAt.getTime()),
+            };
+            if (showSensitive) {
+                base.localIp = d.ip;
+                base.publicIp = d.publicIp;
+            }
+            return base;
+        });
+        const uniqueUsers = new Map();
+        for (const u of onlineUsers.values()) {
+            if (!uniqueUsers.has(u.userId)) {
+                uniqueUsers.set(u.userId, { displayName: u.displayName, email: u.email, connectedAt: u.connectedAt });
+            }
+        }
+        const usersPayload = Array.from(uniqueUsers.values()).map((u) => {
+            const base = {
+                displayName: u.displayName,
+                connectedAt: u.connectedAt.toISOString(),
+                uptime: formatUptime(now - u.connectedAt.getTime()),
+            };
+            if (showSensitive) {
+                base.email = u.email;
+            }
+            return base;
+        });
+        res.json({
+            status: 'ok',
+            uptime: formatUptime(now - SERVER_START),
+            timestamp: new Date(now).toISOString(),
+            devices: { count: devices.size, list: devicesPayload },
+            claims: {
+                count: Object.keys(claims).length,
+                list: Object.entries(claims).map(([deviceId, c]) => ({
+                    deviceId,
+                    userName: c.userName,
+                    claimedAt: c.claimedAt,
+                })),
+            },
+            users: { count: uniqueUsers.size, list: usersPayload },
+            library: { fileCount: libraryService.getAll().length },
+        });
+        return;
+    }
+    // ---- Plain-text ASCII table dashboard ----
+    const lines = [];
+    lines.push('QBIT Server Status');
+    lines.push('===================');
+    lines.push(`Status:    OK`);
+    lines.push(`Uptime:    ${formatUptime(now - SERVER_START)}`);
+    lines.push(`Timestamp: ${new Date(now).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC')}`);
+    lines.push('');
+    // Devices table
+    lines.push(`Devices Online: ${devices.size}`);
+    if (devices.size > 0) {
+        const headers = showSensitive
+            ? ['ID', 'Name', 'Local IP', 'Public IP', 'Version', 'Uptime']
+            : ['ID', 'Name', 'Version', 'Uptime'];
+        const deviceRows = Array.from(devices.values()).map((d) => {
+            const base = [d.id, d.name];
+            if (showSensitive)
+                base.push(d.ip || '-', d.publicIp || '-');
+            base.push(d.version, formatUptime(now - d.connectedAt.getTime()));
+            return base;
+        });
+        lines.push(drawTable(headers, deviceRows));
+    }
+    else {
+        lines.push('  (none)');
+    }
+    lines.push('');
+    // Claims table
+    const claimEntries = Object.entries(claims);
+    lines.push(`Claims: ${claimEntries.length}`);
+    if (claimEntries.length > 0) {
+        const claimRows = claimEntries.map(([deviceId, c]) => {
+            const dev = devices.get(deviceId);
+            return [dev ? dev.name : deviceId, c.userName, c.claimedAt.split('T')[0]];
+        });
+        lines.push(drawTable(['Device', 'Owner', 'Claimed'], claimRows));
+    }
+    else {
+        lines.push('  (none)');
+    }
+    lines.push('');
+    // Users table
+    const uniqueUsers = new Map();
+    for (const u of onlineUsers.values()) {
+        if (!uniqueUsers.has(u.userId)) {
+            uniqueUsers.set(u.userId, { displayName: u.displayName, email: u.email, connectedAt: u.connectedAt });
+        }
+    }
+    lines.push(`Users Online: ${uniqueUsers.size}` + (onlineUsers.size !== uniqueUsers.size ? ` (${onlineUsers.size} sessions)` : ''));
+    if (uniqueUsers.size > 0) {
+        const headers = showSensitive ? ['Name', 'Email', 'Session'] : ['Name', 'Session'];
+        const userRows = Array.from(uniqueUsers.values()).map((u) => {
+            const row = [u.displayName];
+            if (showSensitive)
+                row.push(u.email || '-');
+            row.push(formatUptime(now - u.connectedAt.getTime()));
+            return row;
+        });
+        lines.push(drawTable(headers, userRows));
+    }
+    else {
+        lines.push('  (none)');
+    }
+    lines.push('');
+    lines.push(`Library: ${libraryService.getAll().length} files`);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(lines.join('\n') + '\n');
+});
+exports.default = router;
+//# sourceMappingURL=health.routes.js.map
