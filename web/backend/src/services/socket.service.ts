@@ -5,7 +5,7 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HttpServer } from 'http';
 import { IncomingMessage } from 'http';
-import { FRONTEND_URL } from '../config';
+import { FRONTEND_URL, ALLOW_ANY_ORIGIN } from '../config';
 import { isBanned } from './ban.service';
 import * as userService from './user.service';
 import * as deviceService from './device.service';
@@ -133,7 +133,7 @@ export function emitToUser(userId: string, event: string, data?: unknown): void 
 
 export function setupSocketIo(httpServer: HttpServer, sessionMiddleware: RequestHandler): SocketIOServer {
   io = new SocketIOServer(httpServer, {
-    cors: { origin: FRONTEND_URL, credentials: true },
+    cors: { origin: ALLOW_ANY_ORIGIN ? true : FRONTEND_URL, credentials: true },
     maxHttpBufferSize: 1024 * 1024, // 1MB limit per message
   });
 

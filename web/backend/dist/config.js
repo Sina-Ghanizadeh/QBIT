@@ -6,7 +6,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isProduction = exports.NODE_ENV = exports.TELEGRAM_BOT_USERNAME = exports.TELEGRAM_BOT_TOKEN = exports.ADMIN_PASSWORD_MAX_LEN = exports.ADMIN_PASSWORD_MIN_LEN = exports.ADMIN_USERNAME_MAX_LEN = exports.FAILED_LOGIN_DELAY_MS = exports.ADMIN_LOGIN_RATE_LIMIT = exports.AUTH_RATE_LIMIT = exports.LIBRARY_RATE_LIMIT = exports.API_RATE_LIMIT = exports.ADMIN_SESSION_MAX_AGE = exports.SESSION_MAX_AGE = exports.MAX_QGIF_SIZE = exports.MAX_DEVICE_CONNECTIONS_PER_IP = exports.MAX_DEVICE_CONNECTIONS = exports.DEVICE_API_KEY = exports.ADMIN_PASSWORD = exports.ADMIN_USERNAME = exports.HEALTH_SECRET = exports.ADMIN_SESSION_SECRET = exports.SESSION_SECRET = exports.LIBRARY_DIR = exports.LOCAL_AUTH_AVAILABLE = exports.LOCAL_REGISTRATION_ENABLED = exports.LOCAL_AUTH_ENABLED = exports.LOCAL_AUTH_PASSWORD = exports.LOCAL_AUTH_USERNAME = exports.COOKIE_SECURE = exports.IS_LOCAL_DEV = exports.COOKIE_DOMAIN = exports.FRONTEND_URL = exports.ADMIN_HOST = exports.ADMIN_PORT = exports.PORT = void 0;
+exports.isProduction = exports.NODE_ENV = exports.TELEGRAM_BOT_USERNAME = exports.TELEGRAM_BOT_TOKEN = exports.ADMIN_PASSWORD_MAX_LEN = exports.ADMIN_PASSWORD_MIN_LEN = exports.ADMIN_USERNAME_MAX_LEN = exports.FAILED_LOGIN_DELAY_MS = exports.ADMIN_LOGIN_RATE_LIMIT = exports.AUTH_RATE_LIMIT = exports.LIBRARY_RATE_LIMIT = exports.API_RATE_LIMIT = exports.ADMIN_SESSION_MAX_AGE = exports.SESSION_MAX_AGE = exports.MAX_QGIF_SIZE = exports.MAX_DEVICE_CONNECTIONS_PER_IP = exports.MAX_DEVICE_CONNECTIONS = exports.DEVICE_API_KEY = exports.ADMIN_PASSWORD = exports.ADMIN_USERNAME = exports.HEALTH_SECRET = exports.ADMIN_SESSION_SECRET = exports.SESSION_SECRET = exports.LIBRARY_DIR = exports.LOCAL_AUTH_AVAILABLE = exports.LOCAL_REGISTRATION_ENABLED = exports.LOCAL_AUTH_ENABLED = exports.LOCAL_AUTH_PASSWORD = exports.LOCAL_AUTH_USERNAME = exports.ALLOWED_ORIGINS = exports.ALLOW_ANY_ORIGIN = exports.COOKIE_SECURE = exports.IS_LOCAL_DEV = exports.COOKIE_DOMAIN = exports.FRONTEND_URL = exports.ADMIN_HOST = exports.ADMIN_PORT = exports.PORT = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -23,6 +23,16 @@ exports.COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || '.labxcloud.com';
 exports.IS_LOCAL_DEV = exports.COOKIE_DOMAIN === 'localhost';
 // Secure cookies only when the frontend is served over HTTPS (works for http://IP self-host).
 exports.COOKIE_SECURE = exports.FRONTEND_URL.startsWith('https://');
+// Temporarily allow any browser Origin (public IP / LAN). Set ALLOW_ANY_ORIGIN=false to lock down.
+exports.ALLOW_ANY_ORIGIN = (process.env.ALLOW_ANY_ORIGIN || 'true').trim().toLowerCase() !== 'false';
+// Extra allowed origins (comma-separated), used when ALLOW_ANY_ORIGIN is false
+exports.ALLOWED_ORIGINS = [
+    exports.FRONTEND_URL,
+    ...(process.env.ALLOWED_ORIGINS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+].filter((v, i, a) => a.indexOf(v) === i);
 // Optional local username/password login for self-hosted setups without Google OAuth.
 // Enabled when both LOCAL_AUTH_USERNAME and LOCAL_AUTH_PASSWORD are set.
 exports.LOCAL_AUTH_USERNAME = (process.env.LOCAL_AUTH_USERNAME || '').trim();

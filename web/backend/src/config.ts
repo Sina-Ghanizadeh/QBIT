@@ -20,6 +20,19 @@ export const IS_LOCAL_DEV = COOKIE_DOMAIN === 'localhost';
 // Secure cookies only when the frontend is served over HTTPS (works for http://IP self-host).
 export const COOKIE_SECURE = FRONTEND_URL.startsWith('https://');
 
+// Temporarily allow any browser Origin (public IP / LAN). Set ALLOW_ANY_ORIGIN=false to lock down.
+export const ALLOW_ANY_ORIGIN =
+  (process.env.ALLOW_ANY_ORIGIN || 'true').trim().toLowerCase() !== 'false';
+
+// Extra allowed origins (comma-separated), used when ALLOW_ANY_ORIGIN is false
+export const ALLOWED_ORIGINS: string[] = [
+  FRONTEND_URL,
+  ...(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+].filter((v, i, a) => a.indexOf(v) === i);
+
 // Optional local username/password login for self-hosted setups without Google OAuth.
 // Enabled when both LOCAL_AUTH_USERNAME and LOCAL_AUTH_PASSWORD are set.
 export const LOCAL_AUTH_USERNAME = (process.env.LOCAL_AUTH_USERNAME || '').trim();

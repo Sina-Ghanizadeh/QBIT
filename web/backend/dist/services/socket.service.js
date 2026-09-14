@@ -159,7 +159,7 @@ function emitToUser(userId, event, data) {
 // ---------------------------------------------------------------------------
 function setupSocketIo(httpServer, sessionMiddleware) {
     io = new socket_io_1.Server(httpServer, {
-        cors: { origin: config_1.FRONTEND_URL, credentials: true },
+        cors: { origin: config_1.ALLOW_ANY_ORIGIN ? true : config_1.FRONTEND_URL, credentials: true },
         maxHttpBufferSize: 1024 * 1024, // 1MB limit per message
     });
     // Share session with Socket.io

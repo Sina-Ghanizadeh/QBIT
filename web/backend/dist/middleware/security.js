@@ -13,15 +13,9 @@ exports.csrfOriginCheckSameOrigin = csrfOriginCheckSameOrigin;
 const helmet_1 = __importDefault(require("helmet"));
 const config_1 = require("../config");
 const logger_1 = __importDefault(require("../logger"));
-// Avoid logging sensitive Authorization header
-const sensitiveHeaders = ['authorization', 'x-device-api-key'];
 // ---------------------------------------------------------------------------
 //  Helmet configuration
 // ---------------------------------------------------------------------------
-// Default helmet() sets X-Content-Type-Options, X-Frame-Options,
-// Strict-Transport-Security, X-XSS-Protection, etc.
-// We customise CSP to allow Google avatar images and inline styles for React.
-// Helmet middleware with custom security headers
 exports.helmetMiddleware = (0, helmet_1.default)({
     contentSecurityPolicy: {
         directives: {
@@ -36,7 +30,7 @@ exports.helmetMiddleware = (0, helmet_1.default)({
             baseUri: ["'self'"],
         },
     },
-    crossOriginEmbedderPolicy: false, // avoid breaking Google avatar images
+    crossOriginEmbedderPolicy: false,
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });
 function permissionsPolicyMiddleware(_req, res, next) {
@@ -46,40 +40,66 @@ function permissionsPolicyMiddleware(_req, res, next) {
 // ---------------------------------------------------------------------------
 //  CSRF origin-check middleware
 // ---------------------------------------------------------------------------
-// For state-changing requests (POST / PUT / DELETE / PATCH), verify that
-// the Origin or Referer header matches FRONTEND_URL.
-// This prevents cross-site form submissions while allowing same-origin
-// requests from the frontend.
-const allowedOrigin = new URL(config_1.FRONTEND_URL).origin;
+function requestHostOrigin(req) {
+    const hostHeader = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
+    if (!hostHeader)
+        return null;
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
+    try {
+        return new URL(`${proto}://${hostHeader}`).origin;
+    }
+    catch {
+        return null;
+    }
+}
+function isAllowedOrigin(requestOrigin, req) {
+    if (config_1.ALLOW_ANY_ORIGIN)
+        return true;
+    if (config_1.ALLOWED_ORIGINS.includes(requestOrigin))
+        return true;
+    const hostOrigin = requestHostOrigin(req);
+    return !!hostOrigin && requestOrigin === hostOrigin;
+}
 function csrfOriginCheck(req, res, next) {
-    // Only check state-changing methods
+    if (config_1.ALLOW_ANY_ORIGIN) {
+        next();
+        return;
+    }
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         next();
         return;
     }
     const origin = req.headers.origin;
     const referer = req.headers.referer;
-    // Allow requests with no origin (e.g. server-to-server, same-origin
-    // navigations in some browsers, curl/Postman in dev).  The session
-    // cookie's SameSite=lax already blocks cross-site cookie attachment
-    // for POST, so this is an additional layer.
     if (!origin && !referer) {
         next();
         return;
     }
-    const requestOrigin = origin || (referer ? new URL(referer).origin : '');
-    if (requestOrigin === allowedOrigin) {
+    let requestOrigin = '';
+    try {
+        requestOrigin = origin || (referer ? new URL(referer).origin : '');
+    }
+    catch {
+        res.status(403).json({ error: 'Forbidden: origin mismatch' });
+        return;
+    }
+    if (requestOrigin && isAllowedOrigin(requestOrigin, req)) {
         next();
         return;
     }
-    logger_1.default.warn({ origin, referer, path: req.path }, 'CSRF origin check failed');
+    logger_1.default.warn({ origin, referer, path: req.path, allowed: config_1.ALLOWED_ORIGINS, frontend: config_1.FRONTEND_URL }, 'CSRF origin check failed');
     res.status(403).json({ error: 'Forbidden: origin mismatch' });
 }
 /**
  * Same-origin check for admin app: only allow state-changing requests when
  * Origin or Referer matches this app's origin (protocol + host).
+ * Skipped when ALLOW_ANY_ORIGIN is enabled.
  */
 function csrfOriginCheckSameOrigin(req, res, next) {
+    if (config_1.ALLOW_ANY_ORIGIN) {
+        next();
+        return;
+    }
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         next();
         return;

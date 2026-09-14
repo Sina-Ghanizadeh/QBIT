@@ -13,6 +13,7 @@ import {
   COOKIE_SECURE,
   SESSION_MAX_AGE,
   API_RATE_LIMIT,
+  ALLOW_ANY_ORIGIN,
 } from './config';
 import { SQLiteSessionStore } from './db';
 import { setupAuth } from './auth';
@@ -39,8 +40,13 @@ app.set('trust proxy', 1); // trust Cloudflare / reverse proxy
 app.use(helmetMiddleware);
 app.use(permissionsPolicyMiddleware);
 
-// CORS
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+// CORS — reflect any Origin when ALLOW_ANY_ORIGIN (needed for public IP / LAN)
+app.use(
+  cors({
+    origin: ALLOW_ANY_ORIGIN ? true : FRONTEND_URL,
+    credentials: true,
+  })
+);
 
 // Body parsing
 app.use(express.json());

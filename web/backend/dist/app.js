@@ -32,8 +32,11 @@ app.set('trust proxy', 1); // trust Cloudflare / reverse proxy
 // Security headers (helmet)
 app.use(security_1.helmetMiddleware);
 app.use(security_1.permissionsPolicyMiddleware);
-// CORS
-app.use((0, cors_1.default)({ origin: config_1.FRONTEND_URL, credentials: true }));
+// CORS — reflect any Origin when ALLOW_ANY_ORIGIN (needed for public IP / LAN)
+app.use((0, cors_1.default)({
+    origin: config_1.ALLOW_ANY_ORIGIN ? true : config_1.FRONTEND_URL,
+    credentials: true,
+}));
 // Body parsing
 app.use(express_1.default.json());
 // ---------------------------------------------------------------------------
