@@ -17,6 +17,15 @@ export const ADMIN_HOST = process.env.ADMIN_HOST || '127.0.0.1';
 export const FRONTEND_URL = process.env.FRONTEND_URL || 'https://qbit.labxcloud.com';
 export const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || '.labxcloud.com';
 export const IS_LOCAL_DEV = COOKIE_DOMAIN === 'localhost';
+// Secure cookies only when the frontend is served over HTTPS (works for http://IP self-host).
+export const COOKIE_SECURE = FRONTEND_URL.startsWith('https://');
+
+// Optional local username/password login for self-hosted setups without Google OAuth.
+// Enabled when both LOCAL_AUTH_USERNAME and LOCAL_AUTH_PASSWORD are set.
+export const LOCAL_AUTH_USERNAME = (process.env.LOCAL_AUTH_USERNAME || '').trim();
+export const LOCAL_AUTH_PASSWORD = (process.env.LOCAL_AUTH_PASSWORD || '').trim();
+export const LOCAL_AUTH_ENABLED =
+  LOCAL_AUTH_USERNAME.length > 0 && LOCAL_AUTH_PASSWORD.length >= 8;
 
 // ---- Data / library ----
 export const LIBRARY_DIR = process.env.LIBRARY_DIR || '/data';

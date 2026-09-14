@@ -6,7 +6,6 @@ interface Props {
   onPoke: (targetUserId: string, text: string, targetDisplayName?: string) => Promise<void>;
   onClose: () => void;
   isLoggedIn: boolean;
-  apiUrl: string;
   isFriend?: boolean;
   onRemoveFriend?: (publicUserId: string) => Promise<void>;
 }
@@ -22,7 +21,7 @@ const QUICK_MESSAGES = [
 
 const MAX_LENGTH = 25;
 
-export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, apiUrl, isFriend, onRemoveFriend }: Props) {
+export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, isFriend, onRemoveFriend }: Props) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -68,7 +67,7 @@ export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, ap
         </div>
         {!isLoggedIn ? (
           <div className="poke-login-msg">
-            <a href={`${apiUrl}/auth/google`}>Login</a> to send a poke.
+            Login from the top-right to send a poke.
           </div>
         ) : (
           <>

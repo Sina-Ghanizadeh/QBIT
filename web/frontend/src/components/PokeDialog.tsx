@@ -11,7 +11,6 @@ interface Props {
   onAddFriend: (device: Device) => void;
   onClose: () => void;
   isLoggedIn: boolean;
-  apiUrl: string;
   friendIds?: string[];
   /** displayName per publicUserId (from API, so names show when friend is offline) */
   friendDisplayNames?: Record<string, string>;
@@ -115,7 +114,6 @@ export default function PokeDialog({
   onAddFriend,
   onClose,
   isLoggedIn,
-  apiUrl,
   friendIds = [],
   friendDisplayNames = {},
   friendAvatars = {},
@@ -186,7 +184,7 @@ export default function PokeDialog({
         <div className="poke-dialog-body">
         {!isLoggedIn ? (
           <div className="poke-login-msg">
-            <a href={`${apiUrl}/auth/google`}>Login</a> to send a poke.
+            Login from the top-right to send a poke.
           </div>
         ) : (
           <>

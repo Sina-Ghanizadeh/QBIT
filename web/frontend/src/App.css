@@ -331,6 +331,67 @@ body {
   flex-shrink: 0;
 }
 
+.login-local-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  min-width: 220px;
+}
+
+.login-local-title {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-local-input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 0.85em;
+}
+
+.login-local-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.login-local-error {
+  color: #ff8a8a;
+  font-size: 0.78em;
+}
+
+.login-local-submit {
+  border: none;
+  border-radius: 8px;
+  background: var(--red);
+  color: #fff;
+  padding: 8px 10px;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-local-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.login-menu-empty {
+  padding: 12px 16px;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  line-height: 1.4;
+  max-width: 240px;
+}
+
 .btn-logout {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);

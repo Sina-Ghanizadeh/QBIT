@@ -1,2 +1,5 @@
-**/venv/
+﻿**/venv/
 tools/backups/
+web/.env
+web/data/
+**/node_modules/

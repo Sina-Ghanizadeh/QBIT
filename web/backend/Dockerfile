@@ -1,9 +1,10 @@
 # Build context must be the web/ directory (parent of backend/ and admin/).
+# Uses full node:20 (includes g++/make/python) so Alpine apk is not required
+# (some hosts block Alpine package mirrors / TLS).
 
 # Stage 1: backend TypeScript build
-FROM node:20.18-alpine3.21 AS backend-build
+FROM node:20 AS backend-build
 WORKDIR /app
-RUN apk add --no-cache python3 make g++
 COPY backend/package.json backend/package-lock.json* ./
 RUN npm install
 COPY backend/tsconfig.json ./
@@ -11,7 +12,7 @@ COPY backend/src/ ./src/
 RUN npx tsc
 
 # Stage 2: admin UI build (outputs to /backend/static/admin from vite config)
-FROM node:20.18-alpine3.21 AS admin-build
+FROM node:20 AS admin-build
 WORKDIR /admin
 COPY admin/package.json admin/package-lock.json* ./
 RUN npm install
@@ -19,13 +20,11 @@ COPY admin/ ./
 RUN npm run build
 
 # Stage 3: runtime image
-FROM node:20.18-alpine3.21
+FROM node:20
 WORKDIR /app
 ENV NODE_ENV=production
-# better-sqlite3 requires native compilation on Alpine
-RUN apk add --no-cache python3 make g++
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm install --omit=dev && apk del python3 make g++
+RUN npm install --omit=dev
 COPY --from=backend-build /app/dist/ ./dist/
 COPY --from=admin-build /backend/static/admin ./static/admin/
 EXPOSE 3001

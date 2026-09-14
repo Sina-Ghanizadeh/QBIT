@@ -11,7 +11,7 @@ import {
   ADMIN_SESSION_MAX_AGE,
   ADMIN_USERNAME,
   ADMIN_PASSWORD,
-  IS_LOCAL_DEV,
+  COOKIE_SECURE,
 } from './config';
 import { SQLiteSessionStore } from './db';
 import { helmetMiddleware, permissionsPolicyMiddleware, csrfOriginCheckSameOrigin } from './middleware/security';
@@ -44,7 +44,7 @@ adminApp.use(
     name: 'qbit_admin_sid',
     cookie: {
       httpOnly: true,
-      secure: !IS_LOCAL_DEV,
+      secure: COOKIE_SECURE,
       sameSite: 'lax',
       maxAge: ADMIN_SESSION_MAX_AGE,
     },

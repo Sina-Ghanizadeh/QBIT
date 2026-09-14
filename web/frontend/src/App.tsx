@@ -334,7 +334,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Navbar user={user} apiUrl={API_URL} page={page} setPage={setPage} />
+      <Navbar user={user} apiUrl={API_URL} page={page} setPage={setPage} onUserChange={setUser} />
       <main className="main">
         {page === 'network' && (
           <>
@@ -453,7 +453,6 @@ export default function App() {
           }}
           onClose={() => setSelectedDevice(null)}
           isLoggedIn={!!user}
-          apiUrl={API_URL}
           friendIds={friendIds}
           friendDisplayNames={friendDisplayNames}
           friendAvatars={friendAvatars}
@@ -509,7 +508,6 @@ export default function App() {
           onPoke={handleUserPoke}
           onClose={() => setSelectedUser(null)}
           isLoggedIn={!!user}
-          apiUrl={API_URL}
           isFriend={friendIds.includes(selectedUser.publicUserId)}
           onRemoveFriend={async (publicUserId) => {
             const res = await fetch(`${API_URL}/api/friends/${encodeURIComponent(publicUserId)}`, {

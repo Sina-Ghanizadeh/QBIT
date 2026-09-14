@@ -10,7 +10,7 @@ import rateLimit from 'express-rate-limit';
 import {
   FRONTEND_URL,
   SESSION_SECRET,
-  IS_LOCAL_DEV,
+  COOKIE_SECURE,
   SESSION_MAX_AGE,
   API_RATE_LIMIT,
 } from './config';
@@ -67,7 +67,7 @@ export const sessionMiddleware = session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: !IS_LOCAL_DEV,
+    secure: COOKIE_SECURE,
     sameSite: 'lax',
     maxAge: SESSION_MAX_AGE,
   },

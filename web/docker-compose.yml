@@ -1,5 +1,5 @@
-# Production compose. Expose only 3000 (frontend) to the internet.
-# Backend 3001 is for API; 3002 is admin UI (bind to internal network only in production).
+# Production compose. Expose only 2325 (frontend) to the internet.
+# Backend 3001 is for API; admin UI on host 2326 (bind to internal/VPN in production).
 
 services:
   backend:
@@ -14,8 +14,8 @@ services:
       - "3001"
       - "3002"
     ports:
-      # Admin UI (sessions, devices, ban). Restrict 3002 to internal/VPN; do not expose to internet.
-      - "3002:3002"
+      # Admin UI (sessions, devices, ban). Restrict 2326 to internal/VPN; do not expose to internet.
+      - "2326:3002"
     environment:
       - PORT=3001
       - ADMIN_PORT=3002
@@ -48,7 +48,7 @@ services:
     container_name: qbit-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "2325:80"
     depends_on:
       backend:
         condition: service_healthy
