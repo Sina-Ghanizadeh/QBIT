@@ -4,9 +4,12 @@
 
 import crypto from 'crypto';
 import db from '../db';
+import { PUBLIC_BASE_URL } from '../config';
 import * as claimService from './claim.service';
 import * as groupService from './group.service';
 import * as deviceService from './device.service';
+import * as libraryService from './library.service';
+import logger from '../logger';
 
 export type GranteeType = 'user' | 'group';
 
@@ -96,7 +99,7 @@ export function canSetAnimation(actorUserId: string, deviceId: string): boolean 
   return false;
 }
 
-/** Push set_animation to device over WS. Firmware may ignore until supported. */
+/** Push set_animation to device over WS (device downloads .qgif from url). */
 export function pushAnimationToDevice(
   actorUserId: string,
   deviceId: string,
@@ -109,16 +112,134 @@ export function pushAnimationToDevice(
   if (!device) {
     return { error: 'Device not found or offline', status: 404 };
   }
+
+  const libraryId = payload.libraryId || payload.animationId;
+  let url: string | undefined;
+  let filename = payload.filename;
+  if (libraryId) {
+    const item = libraryService.getById(libraryId);
+    if (!item) {
+      return { error: 'Library item not found', status: 404 };
+    }
+    filename = filename || item.filename;
+    url = `${PUBLIC_BASE_URL}/api/library/${encodeURIComponent(libraryId)}/raw`;
+  }
+
+  if (!url) {
+    return { error: 'libraryId is required so the device can download the file', status: 400 };
+  }
+
   try {
     device.ws.send(
       JSON.stringify({
         type: 'set_animation',
-        libraryId: payload.libraryId,
-        filename: payload.filename,
-        animationId: payload.animationId ?? payload.libraryId,
+        libraryId,
+        filename,
+        animationId: payload.animationId ?? libraryId,
+        url,
       })
     );
   } catch {
+    return { error: 'Failed to send to device', status: 502 };
+  }
+  return { ok: true };
+}
+
+/** Claim owner only may stream webcam to a device (stricter than animation grants). */
+export function canStreamCam(actorUserId: string, deviceId: string): boolean {
+  const claim = claimService.getClaimByDevice(deviceId);
+  return !!claim && claim.userId === actorUserId;
+}
+
+const camSessions = new Map<string, string>(); // deviceId -> userId
+const camFrameLogCounts = new Map<string, number>();
+
+export function getCamSessionUser(deviceId: string): string | undefined {
+  return camSessions.get(deviceId);
+}
+
+export function clearCamSession(deviceId: string): void {
+  camSessions.delete(deviceId);
+  camFrameLogCounts.delete(deviceId);
+}
+
+/** Normalize browser Socket.io frame payloads into a Buffer. */
+export function coerceCamFrame(frame: unknown): Buffer | null {
+  if (frame == null) return null;
+  if (typeof frame === 'string') return Buffer.from(frame, 'base64');
+  if (Buffer.isBuffer(frame)) return frame;
+  if (frame instanceof ArrayBuffer) return Buffer.from(frame);
+  if (ArrayBuffer.isView(frame)) {
+    const v = frame as ArrayBufferView;
+    return Buffer.from(v.buffer, v.byteOffset, v.byteLength);
+  }
+  if (Array.isArray(frame)) return Buffer.from(frame as number[]);
+  if (
+    typeof frame === 'object' &&
+    (frame as { type?: string }).type === 'Buffer' &&
+    Array.isArray((frame as { data?: unknown }).data)
+  ) {
+    return Buffer.from((frame as { data: number[] }).data);
+  }
+  return null;
+}
+
+/** Forward cloud webcam control/frames to a claimed device (owner only). */
+export function pushCamToDevice(
+  actorUserId: string,
+  deviceId: string,
+  action: 'start' | 'stop' | 'frame',
+  frame?: Buffer
+): { ok: true } | { error: string; status: number } {
+  if (!canStreamCam(actorUserId, deviceId)) {
+    return { error: 'Only the device owner can stream webcam to this device', status: 403 };
+  }
+  const device = deviceService.getDevice(deviceId);
+  if (!device) {
+    return { error: 'Device not found or offline', status: 404 };
+  }
+  try {
+    if (action === 'start') {
+      device.ws.send(JSON.stringify({ type: 'cam_start' }));
+      camSessions.set(deviceId, actorUserId);
+      logger.info({ deviceId, userId: actorUserId }, 'cam: sent cam_start to device');
+    } else if (action === 'stop') {
+      device.ws.send(JSON.stringify({ type: 'cam_stop' }));
+      camSessions.delete(deviceId);
+      logger.info({ deviceId, userId: actorUserId }, 'cam: sent cam_stop to device');
+    } else if (action === 'frame') {
+      const receivedLen = frame?.length ?? 0;
+      if (!frame || receivedLen !== 1024) {
+        logger.warn(
+          { deviceId, userId: actorUserId, receivedFrameLen: receivedLen, expected: 1024 },
+          'cam: reject frame (bad length)'
+        );
+        return { error: 'Frame must be exactly 1024 bytes', status: 400 };
+      }
+      // Do not send frames if session was cleared (device stopped / busy)
+      if (!camSessions.has(deviceId)) {
+        logger.warn({ deviceId, userId: actorUserId, receivedFrameLen: receivedLen }, 'cam: reject frame (no session)');
+        return { error: 'Camera session not active', status: 409 };
+      }
+      device.ws.send(frame, { binary: true });
+      const n = (camFrameLogCounts.get(deviceId) || 0) + 1;
+      camFrameLogCounts.set(deviceId, n);
+      if (n <= 5 || n % 50 === 0) {
+        logger.info(
+          {
+            deviceId,
+            userId: actorUserId,
+            receivedFrameLen: receivedLen,
+            forwardedFrameLen: frame.length,
+            binary: true,
+            frameSeq: n,
+          },
+          'cam: forwarded binary frame to device'
+        );
+      }
+    }
+  } catch (err) {
+    logger.error({ err, deviceId, action }, 'cam: failed to send to device');
     return { error: 'Failed to send to device', status: 502 };
   }
   return { ok: true };

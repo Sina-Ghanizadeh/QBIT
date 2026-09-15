@@ -378,3 +378,73 @@ export function batchDelete(ids: string[], userId: string): { deleted: number; f
 export function reload(): void {
   loadCache();
 }
+
+const OFFICIAL_LIBRARY_BASE = 'https://qbit.labxcloud.com';
+const OFFICIAL_UPLOADER_ID = 'official-mirror';
+
+export async function seedFromOfficialLibrary(opts?: {
+  limit?: number;
+  sort?: 'stars' | 'downloads' | 'newest';
+}): Promise<{ imported: number; skipped: number; failed: number; total: number }> {
+  const limit = Math.min(Math.max(1, opts?.limit ?? 60), 100);
+  const sort = opts?.sort ?? 'stars';
+  const listRes = await fetch(`${OFFICIAL_LIBRARY_BASE}/api/library?sort=${sort}`, {
+    headers: {
+      'User-Agent': 'QBIT-SelfHost-Seed/1.0',
+      Accept: 'application/json',
+    },
+  });
+  if (!listRes.ok) {
+    throw new Error(`Official library list failed: HTTP ${listRes.status}`);
+  }
+  const items = (await listRes.json()) as Array<{
+    id: string;
+    filename: string;
+    uploader?: string;
+    frameCount?: number;
+    size?: number;
+  }>;
+  if (!Array.isArray(items)) {
+    throw new Error('Official library returned unexpected payload');
+  }
+
+  let imported = 0;
+  let skipped = 0;
+  let failed = 0;
+  const selected = items.slice(0, limit);
+
+  for (const item of selected) {
+    try {
+      const rawRes = await fetch(
+        `${OFFICIAL_LIBRARY_BASE}/api/library/${encodeURIComponent(item.id)}/raw`,
+        { headers: { 'User-Agent': 'QBIT-SelfHost-Seed/1.0' } }
+      );
+      if (!rawRes.ok) {
+        failed++;
+        logger.warn({ id: item.id, status: rawRes.status }, 'Official raw download failed');
+        continue;
+      }
+      const buf = Buffer.from(await rawRes.arrayBuffer());
+      if (buf.length < 5) {
+        failed++;
+        continue;
+      }
+      const frameCount = buf[0] || item.frameCount || 0;
+      const filename = item.filename?.endsWith('.qgif')
+        ? item.filename
+        : `${item.filename || item.id}.qgif`;
+      const uploader = item.uploader ? `${item.uploader} (official)` : 'QBIT Official';
+      addItem(buf, filename, uploader, OFFICIAL_UPLOADER_ID, frameCount);
+      imported++;
+    } catch (err) {
+      if (err instanceof DuplicateContentError) {
+        skipped++;
+      } else {
+        failed++;
+        logger.warn({ id: item.id, err }, 'Official seed item failed');
+      }
+    }
+  }
+
+  return { imported, skipped, failed, total: selected.length };
+}

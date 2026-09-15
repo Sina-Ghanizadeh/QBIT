@@ -20,6 +20,10 @@ export const IS_LOCAL_DEV = COOKIE_DOMAIN === 'localhost';
 // Secure cookies only when the frontend is served over HTTPS (works for http://IP self-host).
 export const COOKIE_SECURE = FRONTEND_URL.startsWith('https://');
 
+// Base URL devices use to download library .qgif files (must be reachable from ESP32).
+// Defaults to FRONTEND_URL (nginx proxies /api on the public port).
+export const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || FRONTEND_URL).replace(/\/$/, '');
+
 // Temporarily allow any browser Origin (public IP / LAN). Set ALLOW_ANY_ORIGIN=false to lock down.
 export const ALLOW_ANY_ORIGIN =
   (process.env.ALLOW_ANY_ORIGIN || 'true').trim().toLowerCase() !== 'false';

@@ -90,6 +90,9 @@ struct GestureEvent {
 
     // Status flags
     bool connected;
+
+    // CAM_START generation — display ignores stale/cancelled tokens
+    uint32_t token;
 };
 
 // ==========================================================================

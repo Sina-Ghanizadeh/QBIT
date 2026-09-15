@@ -7,6 +7,8 @@
 #include "time_manager.h"
 #include "mqtt_ha.h"
 #include "poke_handler.h"
+#include "gif_types.h"
+#include "web_dashboard.h"
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -254,9 +256,10 @@ static void wsEvent(WebsocketsClient &client, WebsocketsEvent event, WSInterface
             xEventGroupClearBits(connectivityBits, WS_CONNECTED_BIT);
             Serial.println("[WS] Disconnected");
             mqttPublishServerConnectionState(false);
-            // stopPortal() after captive provisioning tears down the link briefly; the socket closes
-            // here then reconnects seconds later. Suppress OLED "Server Offline" in the same window
-            // used for WiFi disconnect UI (set when stopPortal runs / portal success is latched).
+            // Drop cloud webcam so OLED does not freeze on last frame
+            if (webCamCloudIsActive() || webCamIsBusy()) {
+                webCamCloudStop("ws_drop");
+            }
             {
                 const unsigned long until = _wifiSuppressDisconnectUiUntilMs;
                 if (until == 0 || millis() >= until) {
@@ -275,6 +278,24 @@ static void wsEvent(WebsocketsClient &client, WebsocketsEvent event, WSInterface
 
 static void wsMessage(WebsocketsClient &client, WebsocketsMessage message) {
     (void)client;
+
+    // Cloud webcam frames: binary, exactly 1024 bytes. Ignored unless session active
+    // (tap-to-exit / timeout must not auto-restart on stray frames).
+    if (message.isBinary()) {
+        auto data = message.data();
+        static uint32_t camBinLog = 0;
+        camBinLog++;
+        if (data.length() != QGIF_FRAME_SIZE || camBinLog <= 5 || (camBinLog % 50) == 0) {
+            Serial.printf("[CAM] binary frame len=%u (expect %u) seq=%lu\n",
+                          (unsigned)data.length(), (unsigned)QGIF_FRAME_SIZE,
+                          (unsigned long)camBinLog);
+        }
+        if (data.length() == QGIF_FRAME_SIZE) {
+            webCamPushCloudFrame(reinterpret_cast<const uint8_t *>(data.c_str()), data.length());
+        }
+        return;
+    }
+
     if (!message.isText()) return;
 
     String data = message.data();
@@ -283,6 +304,17 @@ static void wsMessage(WebsocketsClient &client, WebsocketsMessage message) {
 
     const char *msgType = doc["type"];
     if (!msgType) return;
+
+    // set_animation intentionally not handled here (separate download pipeline).
+
+    if (strcmp(msgType, "cam_start") == 0) {
+        webCamCloudRequestStart();
+        return;
+    }
+    if (strcmp(msgType, "cam_stop") == 0) {
+        webCamCloudStop("remote_stop");
+        return;
+    }
 
     if (strcmp(msgType, "poke") == 0) {
         const char *sender = doc["sender"] | "Someone";
@@ -488,6 +520,63 @@ static void checkFirmwareVersion() {
         updateAvailable        = false;
         updateAvailableVersion[0] = '\0';
         Serial.printf("[Version] Up to date: %s\n", kQbitVersion);
+    }
+}
+
+// Blocking HTTPS/HTTP work must not run on networkTask while cloud cam streams —
+// otherwise poll() stalls and the frame watchdog fires on queued-but-unread frames.
+static volatile bool _deferredNetWorkBusy = false;
+static bool _deferredDoTz = false;
+static bool _deferredDoVersion = false;
+
+static void deferredNetWorkTaskBody(void *param) {
+    (void)param;
+    const bool doTz = _deferredDoTz;
+    const bool doVersion = _deferredDoVersion;
+
+    // Cam may have become hot after we were scheduled — bail and retry later.
+    if (webCamCloudIsActive() || webCamIsBusy()) {
+        if (doTz) _tzCheckAfterMs = millis() + 5000;
+        if (doVersion) _versionCheckAfterMs = millis() + 30000;
+        _deferredDoTz = false;
+        _deferredDoVersion = false;
+        _deferredNetWorkBusy = false;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    _deferredDoTz = false;
+    _deferredDoVersion = false;
+    if (doTz) timeManagerDetectTimezone();
+    if (doVersion) {
+        checkFirmwareVersion();
+        if (_wifiConnected && WiFi.status() == WL_CONNECTED)
+            _versionCheckAfterMs = millis() + VERSION_RECHECK_INTERVAL_MS;
+        else
+            _versionCheckAfterMs = 0;
+    }
+    _deferredNetWorkBusy = false;
+    vTaskDelete(nullptr);
+}
+
+static void scheduleDeferredNetWork(bool doTz, bool doVersion) {
+    if (!doTz && !doVersion) return;
+    if (_deferredNetWorkBusy) {
+        _deferredDoTz = _deferredDoTz || doTz;
+        _deferredDoVersion = _deferredDoVersion || doVersion;
+        return;
+    }
+    _deferredDoTz = doTz;
+    _deferredDoVersion = doVersion;
+    _deferredNetWorkBusy = true;
+    BaseType_t ok = xTaskCreate(deferredNetWorkTaskBody, "netDefer", 8192, nullptr, 1, nullptr);
+    if (ok != pdPASS) {
+        _deferredNetWorkBusy = false;
+        _deferredDoTz = false;
+        _deferredDoVersion = false;
+        Serial.println("[Net] Failed to spawn deferred net work task");
+        if (doTz) _tzCheckAfterMs = millis() + 5000;
+        if (doVersion) _versionCheckAfterMs = millis() + 15000;
     }
 }
 
@@ -861,9 +950,26 @@ void networkTask(void *param) {
             }
         }
 
-        // --- WebSocket ---
+        // --- WebSocket FIRST: drain inbound frames before the cam watchdog ---
+        // (Blocking MQTT/HTTP earlier in the loop used to starve poll and false-timeout.)
         if (wsIsCloudConnected()) {
             _wsClient.poll();
+            char camOut[128];
+            for (int i = 0; i < 4; i++) {
+                if (!webCamCloudTakeOutbound(camOut, sizeof(camOut))) break;
+                Serial.printf("[CAM] outbound -> cloud: %s\n", camOut);
+                const bool sent = _wsClient.send(camOut);
+                if (!sent) {
+                    Serial.println("[CAM] outbound send FAILED");
+                    break;
+                }
+                if (strstr(camOut, "\"cam_started\"") != nullptr) {
+                    webCamCloudOnStartedSent();
+                }
+            }
+            if (webCamCloudIsActive()) {
+                _wsClient.poll();
+            }
         } else if (_wifiConnected) {
             unsigned long now = millis();
             if (now - _wsLastReconnect >= WS_RECONNECT_MS) {
@@ -872,29 +978,43 @@ void networkTask(void *param) {
             }
         }
 
+        // Watchdog after poll so newly arrived frames update _camLastFrameMs first.
+        webCamCloudTick();
+
+        const bool camHot = webCamCloudIsActive() || webCamIsBusy();
+
         // --- MQTT ---
-        // Only manage MQTT when WiFi is connected; otherwise skip to avoid connection errors.
+        // connect() can block for seconds — never run it while a cam session is hot.
         if (getMqttEnabled() && _wifiConnected && WiFi.status() == WL_CONNECTED) {
             if (!_mqttClient.connected()) {
                 xEventGroupClearBits(connectivityBits, MQTT_CONNECTED_BIT);
-                mqttReconnect();
+                if (!camHot) mqttReconnect();
+            } else {
+                _mqttClient.loop();
             }
-            _mqttClient.loop();
         }
 
-        // --- Deferred timezone detection (~5s after WiFi connect) ---
+        // --- Deferred timezone / version check (off networkTask when possible) ---
+        bool doTz = false;
+        bool doVersion = false;
         if (_tzCheckAfterMs > 0 && millis() >= _tzCheckAfterMs) {
             _tzCheckAfterMs = 0;
             if (getTimezoneIANA().length() == 0 || !getWeatherManual())
-                timeManagerDetectTimezone();
+                doTz = true;
         }
-        // --- Deferred version check (~15s after WiFi connect, then every 6h while STA up) ---
         if (_versionCheckAfterMs > 0 && millis() >= _versionCheckAfterMs) {
-            checkFirmwareVersion();
-            if (_wifiConnected && WiFi.status() == WL_CONNECTED)
-                _versionCheckAfterMs = millis() + VERSION_RECHECK_INTERVAL_MS;
-            else
-                _versionCheckAfterMs = 0;
+            // Clear due-marker; worker reschedules the 6h interval after the GET.
+            _versionCheckAfterMs = 0;
+            doVersion = true;
+        }
+        if (doTz || doVersion) {
+            if (camHot) {
+                // Postpone until stream ends — do not block frame poll.
+                if (doTz) _tzCheckAfterMs = millis() + 5000;
+                if (doVersion) _versionCheckAfterMs = millis() + 30000;
+            } else {
+                scheduleDeferredNetWork(doTz, doVersion);
+            }
         }
 
         vTaskDelay(pdMS_TO_TICKS(10));

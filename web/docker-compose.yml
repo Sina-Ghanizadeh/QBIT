@@ -34,6 +34,7 @@ services:
       - LOCAL_REGISTRATION_ENABLED=${LOCAL_REGISTRATION_ENABLED:-true}
       - ALLOW_ANY_ORIGIN=${ALLOW_ANY_ORIGIN:-true}
       - FRONTEND_URL=${FRONTEND_URL:-}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - COOKIE_DOMAIN=${COOKIE_DOMAIN:-}
     volumes:
       - qbit-data:/data

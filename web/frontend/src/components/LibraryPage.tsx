@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import QgifPreview from './QgifPreview';
+import GifConverterPanel from './GifConverterPanel';
 import type { User } from '../types';
 
 const MAX_CONCURRENT_RAW = 8;
@@ -437,6 +438,12 @@ export default function LibraryPage({ user, apiUrl }: Props) {
           </div>
         )}
       </div>
+
+      <GifConverterPanel
+        apiUrl={apiUrl}
+        canUpload={!!user}
+        onUploaded={() => void fetchItems()}
+      />
 
       {/* Toolbar: search + sort */}
       {items.length > 0 && (

@@ -6,6 +6,8 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <cstring>
+#include <cstdio>
 #if defined(ESP32) || defined(ESP8266)
 #include <WiFi.h>
 #endif
@@ -574,7 +576,7 @@ static void handlePostTimezone(AsyncWebServerRequest *request) {
 }
 
 // ==========================================================================
-//  Web Cam WebSocket (/ws_cam)
+//  Web Cam (local /ws_cam + cloud relay) -- exclusive single source
 // ==========================================================================
 
 static AsyncWebSocket      _camWs("/ws_cam");
@@ -584,8 +586,63 @@ static SemaphoreHandle_t   _camMutex          = nullptr;
 static volatile int        _camClientCount    = 0;
 static uint32_t            _camActiveClientId = 0;
 static uint32_t            _camLastFrameMs    = 0;
+static uint32_t            _camSessionStartMs = 0;
+static uint32_t            _camPendingSinceMs = 0;
+static uint32_t            _camAcceptedFrames = 0;
 static void              (*_onCamStart)()     = nullptr;
 static void              (*_onCamStop)()      = nullptr;
+
+enum CamSource : uint8_t { CAM_SRC_NONE = 0, CAM_SRC_LOCAL = 1, CAM_SRC_CLOUD = 2 };
+enum CamPending : uint8_t { CAM_PEND_NONE = 0, CAM_PEND_LOCAL = 1, CAM_PEND_CLOUD = 2 };
+static CamSource           _camSource         = CAM_SRC_NONE;
+static CamPending          _camPending        = CAM_PEND_NONE;
+static uint32_t            _camToken          = 0;
+static uint32_t            _camTokenSeq       = 0;
+
+// Outbound JSON notify queue (device → cloud server)
+#define CAM_OUT_Q_DEPTH 8
+#define CAM_OUT_MSG_LEN 96
+static char                _camOutQ[CAM_OUT_Q_DEPTH][CAM_OUT_MSG_LEN];
+static uint8_t             _camOutHead = 0;
+static uint8_t             _camOutTail = 0;
+static uint8_t             _camOutCount = 0;
+// Sticky bit: CAM_STOP enqueue failed — display must leave CAM_VIEW.
+static volatile bool       _camUiExitRequested = false;
+
+#define CAM_PENDING_TIMEOUT_MS 2000
+#define CAM_START_NOFRAME_MS   15000  // allow cam_started delivery + browser warmup
+#define CAM_FRAME_GAP_MS       3000
+
+static void camRequestUiExit() {
+    _camUiExitRequested = true;
+}
+
+static bool camLock(TickType_t ticks) {
+    return _camMutex && xSemaphoreTake(_camMutex, ticks) == pdTRUE;
+}
+
+static void camUnlock() {
+    if (_camMutex) xSemaphoreGive(_camMutex);
+}
+
+static void camQueueOutboundLocked(const char *json) {
+    if (!json) return;
+    if (_camOutCount >= CAM_OUT_Q_DEPTH) {
+        // Drop oldest
+        _camOutHead = (uint8_t)((_camOutHead + 1) % CAM_OUT_Q_DEPTH);
+        _camOutCount--;
+    }
+    strncpy(_camOutQ[_camOutTail], json, CAM_OUT_MSG_LEN - 1);
+    _camOutQ[_camOutTail][CAM_OUT_MSG_LEN - 1] = '\0';
+    _camOutTail = (uint8_t)((_camOutTail + 1) % CAM_OUT_Q_DEPTH);
+    _camOutCount++;
+}
+
+static void camQueueOutbound(const char *json) {
+    if (!camLock(pdMS_TO_TICKS(50))) return;  // do not mutate on timeout
+    camQueueOutboundLocked(json);
+    camUnlock();
+}
 
 void webCamSetCallbacks(void (*onStart)(), void (*onStop)()) {
     _onCamStart = onStart;
@@ -597,25 +654,330 @@ bool webCamHasNewFrame() {
 }
 
 void webCamConsumeFrame(uint8_t *dst) {
-    if (!_camMutex) return;
-    if (xSemaphoreTake(_camMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        memcpy(dst, _camBuf, QGIF_FRAME_SIZE);
-        _camFrameNew = false;
-        xSemaphoreGive(_camMutex);
+    if (!dst) return;
+    if (!camLock(pdMS_TO_TICKS(10))) return;
+    memcpy(dst, _camBuf, QGIF_FRAME_SIZE);
+    _camFrameNew = false;
+    camUnlock();
+}
+
+bool webCamIsBusy() {
+    if (!camLock(pdMS_TO_TICKS(20))) return true;  // treat lock fail as busy
+    bool busy = _camSource != CAM_SRC_NONE || _camPending != CAM_PEND_NONE || _camActiveClientId != 0;
+    camUnlock();
+    return busy;
+}
+
+bool webCamCloudIsActive() {
+    if (!camLock(pdMS_TO_TICKS(20))) return false;
+    bool active = (_camSource == CAM_SRC_CLOUD);
+    camUnlock();
+    return active;
+}
+
+uint32_t webCamPendingToken() {
+    if (!camLock(pdMS_TO_TICKS(20))) return 0;
+    uint32_t t = (_camPending != CAM_PEND_NONE) ? _camToken : 0;
+    camUnlock();
+    return t;
+}
+
+bool webCamDisplayShouldShowCam() {
+    if (!camLock(pdMS_TO_TICKS(20))) return true;  // keep UI until we can read
+    bool show = (_camSource == CAM_SRC_LOCAL || _camSource == CAM_SRC_CLOUD);
+    camUnlock();
+    return show;
+}
+
+bool webCamConsumeUiExitRequest() {
+    if (!_camUiExitRequested) return false;
+    _camUiExitRequested = false;
+    return true;
+}
+
+void webCamOnStopEnqueueFailed() {
+    camRequestUiExit();
+}
+
+bool webCamCloudTakeOutbound(char *buf, size_t buflen) {
+    if (!buf || buflen == 0) return false;
+    if (!camLock(pdMS_TO_TICKS(20))) return false;
+    if (_camOutCount == 0) {
+        camUnlock();
+        return false;
     }
+    strncpy(buf, _camOutQ[_camOutHead], buflen - 1);
+    buf[buflen - 1] = '\0';
+    _camOutHead = (uint8_t)((_camOutHead + 1) % CAM_OUT_Q_DEPTH);
+    _camOutCount--;
+    camUnlock();
+    return true;
+}
+
+void webCamCloudOnStartedSent() {
+    // Watchdog should start when the browser can learn the session is live,
+    // not when CAM_VIEW was entered (outbound/network may lag several seconds).
+    if (!camLock(pdMS_TO_TICKS(20))) return;
+    if (_camSource == CAM_SRC_CLOUD && _camLastFrameMs == 0) {
+        _camSessionStartMs = millis();
+    }
+    camUnlock();
+}
+
+static void camClearCloudLocked() {
+    if (_camPending == CAM_PEND_CLOUD) _camPending = CAM_PEND_NONE;
+    if (_camSource == CAM_SRC_CLOUD) {
+        _camSource = CAM_SRC_NONE;
+        _camFrameNew = false;
+        _camLastFrameMs = 0;
+        _camSessionStartMs = 0;
+        _camAcceptedFrames = 0;
+    }
+    _camPendingSinceMs = 0;
+}
+
+void webCamCloudStop(const char *reason) {
+    bool wasCloud = false;
+    bool wasPending = false;
+    if (!camLock(pdMS_TO_TICKS(50))) return;  // no unlocked mutation
+    wasPending = (_camPending == CAM_PEND_CLOUD);
+    wasCloud = (_camSource == CAM_SRC_CLOUD);
+    camClearCloudLocked();
+    if (wasCloud || wasPending) {
+        char msg[CAM_OUT_MSG_LEN];
+        const char *r = (reason && reason[0]) ? reason : "remote_stop";
+        snprintf(msg, sizeof(msg), "{\"type\":\"cam_stopped\",\"reason\":\"%s\"}", r);
+        camQueueOutboundLocked(msg);
+    }
+    // Session cleared: display must leave CAM_VIEW even if CAM_STOP enqueue fails.
+    bool callStop = wasCloud && (_camActiveClientId == 0);
+    if (wasCloud) camRequestUiExit();
+    camUnlock();
+    if (callStop && _onCamStop) _onCamStop();
 }
 
 void webCamDisconnectAll() {
+    bool stopCb = false;
+    if (!camLock(pdMS_TO_TICKS(50))) return;
+    bool cloud = (_camSource == CAM_SRC_CLOUD || _camPending == CAM_PEND_CLOUD);
+    if (cloud) {
+        camClearCloudLocked();
+        camQueueOutboundLocked("{\"type\":\"cam_stopped\",\"reason\":\"user_exit\"}");
+    }
+    bool local = (_camSource == CAM_SRC_LOCAL || _camPending == CAM_PEND_LOCAL);
+    if (local) {
+        _camSource = CAM_SRC_NONE;
+        _camPending = CAM_PEND_NONE;
+        _camActiveClientId = 0;
+        _camFrameNew = false;
+        _camLastFrameMs = 0;
+        _camPendingSinceMs = 0;
+        stopCb = true;
+    }
+    if (cloud || local) camRequestUiExit();
+    camUnlock();
     _camWs.closeAll();
+    if (stopCb && _onCamStop) _onCamStop();
+}
+
+static bool camBeginPending(CamPending kind, uint32_t *outToken) {
+    if (!camLock(pdMS_TO_TICKS(50))) return false;
+    if (_camSource != CAM_SRC_NONE || _camPending != CAM_PEND_NONE || _camActiveClientId != 0) {
+        camUnlock();
+        return false;
+    }
+    _camTokenSeq++;
+    if (_camTokenSeq == 0) _camTokenSeq = 1;
+    _camToken = _camTokenSeq;
+    _camPending = kind;
+    _camPendingSinceMs = millis();
+    if (outToken) *outToken = _camToken;
+    camUnlock();
+    return true;
+}
+
+bool webCamCloudRequestStart() {
+    uint32_t token = 0;
+    if (!camBeginPending(CAM_PEND_CLOUD, &token)) {
+        camQueueOutbound("{\"type\":\"cam_busy\",\"message\":\"camera busy\"}");
+        return false;
+    }
+    if (_onCamStart) {
+        _onCamStart();
+        return true;
+    }
+    webCamOnStartEnqueueFailed(token);
+    return false;
+}
+
+void webCamOnStartEnqueueFailed(uint32_t token) {
+    if (!camLock(pdMS_TO_TICKS(50))) return;
+    if (_camPending == CAM_PEND_NONE || _camToken != token) {
+        camUnlock();
+        return;
+    }
+    CamPending was = _camPending;
+    _camPending = CAM_PEND_NONE;
+    _camPendingSinceMs = 0;
+    if (was == CAM_PEND_CLOUD) {
+        camQueueOutboundLocked("{\"type\":\"cam_busy\",\"message\":\"display queue full\"}");
+    }
+    uint32_t localId = 0;
+    if (was == CAM_PEND_LOCAL) {
+        localId = _camActiveClientId;
+        _camActiveClientId = 0;
+    }
+    camUnlock();
+    if (was == CAM_PEND_LOCAL && localId != 0) {
+        // Reject local client without leaving a half-open pending session
+        _camWs.closeAll();
+    }
+}
+
+bool webCamConfirmFromDisplay(uint32_t token, bool accepted) {
+    if (token == 0) return false;
+    if (!camLock(pdMS_TO_TICKS(50))) return false;
+    // Token check + pending clear + source activate are one critical section.
+    if (_camPending == CAM_PEND_NONE || _camToken != token) {
+        camUnlock();
+        return false;  // stale / cancelled — do not enter CAM_VIEW
+    }
+
+    CamPending kind = _camPending;
+    _camPending = CAM_PEND_NONE;
+    _camPendingSinceMs = 0;
+
+    if (kind == CAM_PEND_CLOUD) {
+        if (accepted) {
+            if (_camActiveClientId != 0) {
+                camQueueOutboundLocked("{\"type\":\"cam_busy\",\"message\":\"camera busy\"}");
+                camUnlock();
+                return false;
+            }
+            _camSource = CAM_SRC_CLOUD;
+            _camSessionStartMs = millis();
+            _camLastFrameMs = 0;
+            _camFrameNew = false;
+            _camAcceptedFrames = 0;
+            camQueueOutboundLocked("{\"type\":\"cam_started\"}");
+            camUnlock();
+            return true;
+        }
+        camQueueOutboundLocked("{\"type\":\"cam_busy\",\"message\":\"device busy\"}");
+        camUnlock();
+        return false;
+    }
+
+    if (kind == CAM_PEND_LOCAL) {
+        if (accepted) {
+            _camSource = CAM_SRC_LOCAL;
+            _camSessionStartMs = millis();
+            _camLastFrameMs = 0;
+            // Keep any frames buffered during pending
+            camUnlock();
+            return true;
+        }
+        uint32_t id = _camActiveClientId;
+        _camActiveClientId = 0;
+        _camSource = CAM_SRC_NONE;
+        _camFrameNew = false;
+        camUnlock();
+        if (id != 0) {
+            // Close with busy — only on reject, not on early frames
+            _camWs.textAll("{\"error\":\"busy\",\"message\":\"device busy\"}");
+            _camWs.closeAll();
+        }
+        if (_onCamStop) _onCamStop();
+        return false;
+    }
+    camUnlock();
+    return false;
+}
+
+void webCamPushCloudFrame(const uint8_t *data, size_t len) {
+    if (!data || len != QGIF_FRAME_SIZE) return;
+    uint32_t nowMs = millis();
+    if (!camLock(pdMS_TO_TICKS(5))) return;
+    if (_camSource != CAM_SRC_CLOUD) {
+        camUnlock();
+        return;
+    }
+    if (_camLastFrameMs != 0 && (nowMs - _camLastFrameMs) < 50) {
+        camUnlock();
+        return;  // rate-limit drop (not counted as accepted)
+    }
+    memcpy(_camBuf, data, QGIF_FRAME_SIZE);
+    _camFrameNew = true;
+    _camLastFrameMs = nowMs;
+    _camAcceptedFrames++;
+    uint32_t n = _camAcceptedFrames;
+    camUnlock();
+    if (n <= 5 || (n % 50) == 0) {
+        Serial.printf("[CAM] accepted cloud frame #%lu len=%u\n",
+                      (unsigned long)n, (unsigned)len);
+    }
+}
+
+void webCamCloudTick() {
+    uint32_t nowMs = millis();
+    if (!camLock(pdMS_TO_TICKS(20))) return;
+
+    // Pending start timeout (display never confirmed)
+    if (_camPending != CAM_PEND_NONE && _camPendingSinceMs != 0 &&
+        (nowMs - _camPendingSinceMs) > CAM_PENDING_TIMEOUT_MS) {
+        CamPending kind = _camPending;
+        uint32_t localId = 0;
+        _camPending = CAM_PEND_NONE;
+        _camPendingSinceMs = 0;
+        if (kind == CAM_PEND_CLOUD) {
+            camQueueOutboundLocked("{\"type\":\"cam_busy\",\"message\":\"start timeout\"}");
+        } else if (kind == CAM_PEND_LOCAL) {
+            localId = _camActiveClientId;
+            _camActiveClientId = 0;
+            _camFrameNew = false;
+        }
+        camUnlock();
+        if (kind == CAM_PEND_LOCAL && localId != 0) {
+            _camWs.textAll("{\"error\":\"busy\",\"message\":\"start timeout\"}");
+            _camWs.closeAll();
+            if (_onCamStop) _onCamStop();
+        }
+        return;
+    }
+
+    if (_camSource == CAM_SRC_CLOUD) {
+        bool timedOut = false;
+        const char *kind = nullptr;
+        uint32_t elapsed = 0;
+        uint32_t accepted = _camAcceptedFrames;
+        if (_camLastFrameMs == 0) {
+            if (_camSessionStartMs != 0 && (nowMs - _camSessionStartMs) > CAM_START_NOFRAME_MS) {
+                timedOut = true;
+                kind = "first_frame";
+                elapsed = nowMs - _camSessionStartMs;
+            }
+        } else if ((nowMs - _camLastFrameMs) > CAM_FRAME_GAP_MS) {
+            timedOut = true;
+            kind = "frame_gap";
+            elapsed = nowMs - _camLastFrameMs;
+        }
+        camUnlock();
+        if (timedOut) {
+            Serial.printf("[CAM] timeout kind=%s elapsed_ms=%lu accepted_frames=%lu\n",
+                          kind ? kind : "?",
+                          (unsigned long)elapsed,
+                          (unsigned long)accepted);
+            webCamCloudStop("timeout");
+        }
+        return;
+    }
+    camUnlock();
 }
 
 static void onCamWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                          AwsEventType type, void *arg, uint8_t *data, size_t len) {
     switch (type) {
         case WS_EVT_CONNECT: {
-            // Allow only one active Web Cam client at a time. Reject new connection
-            // if someone is already streaming; do not touch the existing client.
-            // Basic IP subnet check: only allow same /24 as device STA IP.
 #if defined(ESP32) || defined(ESP8266)
             IPAddress remote = client->remoteIP();
             IPAddress local  = WiFi.localIP();
@@ -624,48 +986,82 @@ static void onCamWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                 break;
             }
 #endif
-            if (_camActiveClientId != 0) {
+            uint32_t token = 0;
+            if (!camBeginPending(CAM_PEND_LOCAL, &token)) {
                 client->text("{\"error\":\"busy\",\"message\":\"Web Cam is in use by another client\"}");
+                client->close();
+                break;
+            }
+            if (!camLock(pdMS_TO_TICKS(50))) {
+                webCamOnStartEnqueueFailed(token);
+                client->text("{\"error\":\"busy\",\"message\":\"camera unavailable\"}");
                 client->close();
                 break;
             }
             _camClientCount++;
             _camActiveClientId = client->id();
+            camUnlock();
             if (_onCamStart) _onCamStart();
+            else webCamOnStartEnqueueFailed(token);
             break;
         }
         case WS_EVT_DISCONNECT:
+            if (!camLock(pdMS_TO_TICKS(50))) break;
             if (client->id() == _camActiveClientId) {
                 _camActiveClientId = 0;
                 _camFrameNew = false;
                 _camLastFrameMs = 0;
-                if (_onCamStop) _onCamStop();
+                bool stopCb = false;
+                if (_camPending == CAM_PEND_LOCAL) {
+                    _camPending = CAM_PEND_NONE;
+                    _camPendingSinceMs = 0;
+                }
+                if (_camSource == CAM_SRC_LOCAL) {
+                    _camSource = CAM_SRC_NONE;
+                    stopCb = true;
+                    camRequestUiExit();
+                }
                 if (_camClientCount > 0) _camClientCount--;
+                camUnlock();
+                if (stopCb && _onCamStop) _onCamStop();
+            } else {
+                camUnlock();
             }
             _camWs.cleanupClients();
             break;
         case WS_EVT_DATA: {
             AwsFrameInfo *info = (AwsFrameInfo *)arg;
-            // Accept frames only from the active client
-            if (client->id() != _camActiveClientId) {
+            // Before display approval: accept/ignore frames from the pending client
+            // but NEVER disconnect (browser often sends immediately after open).
+            if (!camLock(pdMS_TO_TICKS(5))) break;
+            bool isOurClient = (client->id() == _camActiveClientId);
+            bool allowStore = isOurClient &&
+                (_camSource == CAM_SRC_LOCAL || _camPending == CAM_PEND_LOCAL);
+            bool foreign = !isOurClient;
+            camUnlock();
+
+            if (foreign) {
                 client->text("{\"error\":\"busy\",\"message\":\"Web Cam is in use by another client\"}");
                 client->close();
                 break;
             }
-            // Rate-limit and accept only a complete, unfragmented binary message of exactly 1024 bytes
+            if (!allowStore) break;
+
             uint32_t nowMs = millis();
             if (info->final && info->index == 0 &&
                 info->len == QGIF_FRAME_SIZE && info->opcode == WS_BINARY &&
                 len == QGIF_FRAME_SIZE) {
-                if (_camLastFrameMs != 0 && (nowMs - _camLastFrameMs) < 50) {
-                    break;
+                if (!camLock(pdMS_TO_TICKS(5))) break;
+                // Re-check under lock
+                if (client->id() == _camActiveClientId &&
+                    (_camSource == CAM_SRC_LOCAL || _camPending == CAM_PEND_LOCAL)) {
+                    if (_camLastFrameMs == 0 || (nowMs - _camLastFrameMs) >= 50) {
+                        memcpy(_camBuf, data, QGIF_FRAME_SIZE);
+                        _camFrameNew = true;
+                        _camLastFrameMs = nowMs;
+                    }
                 }
-                if (_camMutex && xSemaphoreTake(_camMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-                    memcpy(_camBuf, data, QGIF_FRAME_SIZE);
-                    _camFrameNew = true;
-                    _camLastFrameMs = nowMs;
-                    xSemaphoreGive(_camMutex);
-                }
+                camUnlock();
             }
             break;
         }

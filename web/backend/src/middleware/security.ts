@@ -36,7 +36,7 @@ export function permissionsPolicyMiddleware(
 ): void {
   res.setHeader(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), magnetometer=(), gyroscope=(), accelerometer=()'
+    'camera=(self), microphone=(), geolocation=(), magnetometer=(), gyroscope=(), accelerometer=()'
   );
   next();
 }

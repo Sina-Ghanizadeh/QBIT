@@ -107,17 +107,21 @@ void setup() {
         []() {
             NetworkEvent evt = {};
             evt.kind = NetworkEvent::CAM_START;
+            evt.token = webCamPendingToken();
             BaseType_t ok = xQueueSend(networkEventQueue, &evt, pdMS_TO_TICKS(10));
             if (ok != pdPASS) {
                 Serial.println("WARN: failed to enqueue CAM_START");
+                webCamOnStartEnqueueFailed(evt.token);
             }
         },
         []() {
             NetworkEvent evt = {};
             evt.kind = NetworkEvent::CAM_STOP;
-            BaseType_t ok = xQueueSend(networkEventQueue, &evt, pdMS_TO_TICKS(10));
+            // Longer wait; on failure sticky UI-exit bit reconciles display.
+            BaseType_t ok = xQueueSend(networkEventQueue, &evt, pdMS_TO_TICKS(100));
             if (ok != pdPASS) {
                 Serial.println("WARN: failed to enqueue CAM_STOP");
+                webCamOnStopEnqueueFailed();
             }
         }
     );

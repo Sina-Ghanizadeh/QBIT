@@ -11,6 +11,7 @@ import { isBannedDevice, isBanned } from './ban.service';
 import * as claimService from './claim.service';
 import * as friendService from './friend.service';
 import * as socketService from './socket.service';
+import * as animationService from './animation.service';
 import { ensurePublicUserId } from './publicUserId.service';
 import db from '../db';
 import logger from '../logger';
@@ -461,6 +462,54 @@ export function setupWebSocketServer(httpServer: HttpServer): WebSocketServer {
             logger.info({ deviceId, requester: pending.requesterUserId }, 'Friend request rejected');
           }
         }
+
+        // Cloud webcam session feedback from device
+        if (
+          deviceId &&
+          (msg.type === 'cam_busy' || msg.type === 'cam_stopped' || msg.type === 'cam_started')
+        ) {
+          const userId = animationService.getCamSessionUser(deviceId);
+          if (msg.type === 'cam_started') {
+            logger.info(
+              { deviceId, userId: userId || null, hasSession: !!userId },
+              'cam: received cam_started from device'
+            );
+            if (userId) {
+              socketService.emitToUser(userId, 'device:cam:started', { deviceId });
+              logger.info({ deviceId, userId }, 'cam: emitted device:cam:started to browser');
+            } else {
+              logger.warn(
+                { deviceId },
+                'cam: cam_started ignored — no cam session mapped for device'
+              );
+            }
+          } else if (msg.type === 'cam_busy' || msg.type === 'cam_stopped') {
+            const reason =
+              msg.type === 'cam_busy' ? 'busy' : String(msg.reason || 'stopped');
+            logger.info(
+              {
+                deviceId,
+                userId: userId || null,
+                type: msg.type,
+                reason,
+                message: msg.message || null,
+              },
+              'cam: received cam_busy/cam_stopped from device'
+            );
+            animationService.clearCamSession(deviceId);
+            if (userId) {
+              socketService.emitToUser(userId, 'device:cam:stopped', {
+                deviceId,
+                reason,
+                message: msg.message,
+              });
+              logger.info(
+                { deviceId, userId, reason },
+                'cam: emitted device:cam:stopped to browser'
+              );
+            }
+          }
+        }
       } catch (e) {
         logger.error({ err: e }, 'Invalid device message');
       }
@@ -469,6 +518,7 @@ export function setupWebSocketServer(httpServer: HttpServer): WebSocketServer {
     ws.on('close', () => {
       clearInterval(pingTimer);
       if (deviceId) {
+        animationService.clearCamSession(deviceId);
         const registered = devices.get(deviceId);
         if (registered && registered.ws === ws) {
           const now = new Date().toISOString();

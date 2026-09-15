@@ -76,26 +76,53 @@ extern void weatherScreenInvalidateCache();
 extern bool weatherScreenRefreshNow();
 
 // ==========================================================================
-//  Web Cam streaming over WebSocket (/ws_cam)
+//  Web Cam streaming (local /ws_cam + cloud device WS relay)
 // ==========================================================================
 //
-//  The browser captures the camera, converts each frame to a 1024-byte
-//  packed monochrome bitmap (QGIF format: bit 0 = lit pixel, bit 1 = dark),
-//  and sends it as a binary WebSocket message to /ws_cam.
+//  Shared 1024-byte frame buffer. Exactly one source may be active:
+//  local browser on LAN (/ws_cam) OR cloud relay (device WS binary frames).
 //
-//  Register callbacks to be notified when the first client connects (onStart)
-//  or the last client disconnects (onStop).  Call before server.begin().
+//  Cloud control (text JSON on device cloud WebSocket):
+//    {"type":"cam_start"}
+//    {"type":"cam_stop"}
+//  Cloud frames: binary WS messages, exactly 1024 bytes (128x64 1bpp QGIF).
+//  Device -> server (text JSON):
+//    {"type":"cam_started"}
+//    {"type":"cam_busy","message":"..."}
+//    {"type":"cam_stopped","reason":"user_exit|timeout|ws_drop|remote_stop"}
+//
 void webCamSetCallbacks(void (*onStart)(), void (*onStop)());
 
-// Returns true if a new cam frame (1024 bytes, QGIF format) is available.
 bool webCamHasNewFrame();
-
-// Copy the latest cam frame into dst (must be >= 1024 bytes).
-// Clears the new-frame flag after copying.
 void webCamConsumeFrame(uint8_t *dst);
 
-// Close all connected cam WebSocket clients (e.g. called from display task
-// when the user taps the device to exit cam view).
+// User exit (tap) or forced teardown: close local clients + stop cloud.
 void webCamDisconnectAll();
+
+// Cloud: request start (queues CAM_START). False if busy; queues cam_busy.
+// Active only after webCamConfirmFromDisplay(token, true) returns true.
+bool webCamCloudRequestStart();
+// Token of the current pending start (for NetworkEvent::CAM_START.token).
+uint32_t webCamPendingToken();
+// Atomically validate token + accept/reject under the cam mutex.
+// Returns true only when accepted and the session is now active — display
+// must enter CAM_VIEW only after a true return (never before).
+bool webCamConfirmFromDisplay(uint32_t token, bool accepted);
+// Call when CAM_START could not be enqueued to the display task.
+void webCamOnStartEnqueueFailed(uint32_t token);
+// Call when CAM_STOP could not be enqueued; sticky UI-exit bit for reconcile.
+void webCamOnStopEnqueueFailed();
+// Display polls: sticky exit request (failed CAM_STOP enqueue) or no live session.
+bool webCamConsumeUiExitRequest();
+bool webCamDisplayShouldShowCam();
+void webCamCloudStop(const char *reason);
+bool webCamCloudIsActive();
+bool webCamIsBusy();
+void webCamPushCloudFrame(const uint8_t *data, size_t len);
+// Timeouts / pending maintenance — call even when cloud WS is offline.
+void webCamCloudTick();
+bool webCamCloudTakeOutbound(char *buf, size_t buflen);
+// Call after cam_started is actually written to the cloud WS (resets no-frame watchdog).
+void webCamCloudOnStartedSent();
 
 #endif // WEB_DASHBOARD_H

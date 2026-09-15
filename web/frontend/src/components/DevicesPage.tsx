@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Device, NetworkDeviceNode, User } from '../types';
 import ClaimDialog from './ClaimDialog';
+import DeviceCloudPanel, { type DeviceSocket } from './DeviceCloudPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface Props {
   user: User;
   liveDevices: Device[];
-  socket: {
-    on: (ev: string, fn: (data: { result: string }) => void) => void;
-    off: (ev: string, fn: (data: { result: string }) => void) => void;
-  } | null;
+  socket: DeviceSocket | null;
 }
 
 export default function DevicesPage({ liveDevices, socket }: Props) {
@@ -79,7 +77,7 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
       <header className="page-header">
         <h1>Devices</h1>
         <p className="page-sub">
-          Add and manage your QBIT devices here. Network is only for viewing and poke.
+          Add and manage your QBIT devices here. Set library GIFs and stream webcam through the cloud.
         </p>
       </header>
 
@@ -125,33 +123,36 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
         ) : (
           <ul className="dash-list">
             {myDevices.map((d) => (
-              <li key={d.deviceId} className="dash-list-item">
-                <div>
-                  <strong>{d.name}</strong>
-                  <span className="page-sub">
-                    {' '}
-                    · {d.online ? 'online' : 'offline'} · {d.deviceId}
-                  </span>
+              <li key={d.deviceId} className="dash-list-item col">
+                <div className="dash-list-item">
+                  <div>
+                    <strong>{d.name}</strong>
+                    <span className="page-sub">
+                      {' '}
+                      · {d.online ? 'online' : 'offline'} · {d.deviceId}
+                    </span>
+                  </div>
+                  <div className="dash-form-row">
+                    <label className="dash-toggle compact">
+                      <input
+                        type="checkbox"
+                        checked={!!d.showInGlobal}
+                        onChange={(e) => toggleDeviceGlobal(d.deviceId, e.target.checked)}
+                      />
+                      <span>Show in global</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-text"
+                      disabled={busy || !d.online}
+                      title={!d.online ? 'Device must be online' : 'Unclaim'}
+                      onClick={() => handleUnclaim(d)}
+                    >
+                      Unclaim
+                    </button>
+                  </div>
                 </div>
-                <div className="dash-form-row">
-                  <label className="dash-toggle compact">
-                    <input
-                      type="checkbox"
-                      checked={!!d.showInGlobal}
-                      onChange={(e) => toggleDeviceGlobal(d.deviceId, e.target.checked)}
-                    />
-                    <span>Show in global</span>
-                  </label>
-                  <button
-                    type="button"
-                    className="btn-text"
-                    disabled={busy || !d.online}
-                    title={!d.online ? 'Device must be online' : 'Unclaim'}
-                    onClick={() => handleUnclaim(d)}
-                  >
-                    Unclaim
-                  </button>
-                </div>
+                <DeviceCloudPanel device={d} socket={socket} onError={setError} />
               </li>
             ))}
           </ul>

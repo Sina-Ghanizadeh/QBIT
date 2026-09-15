@@ -9,6 +9,7 @@ import { FRONTEND_URL, ALLOW_ANY_ORIGIN } from '../config';
 import { isBanned } from './ban.service';
 import * as userService from './user.service';
 import * as deviceService from './device.service';
+import * as animationService from './animation.service';
 import { ensurePublicUserId } from './publicUserId.service';
 import logger from '../logger';
 import type { AppUser, OnlineUser, OnlineUserPublic } from '../types';
@@ -193,6 +194,87 @@ export function setupSocketIo(httpServer: HttpServer, sessionMiddleware: Request
       });
       logger.info({ userId: passportUser.id, displayName: passportUser.displayName }, 'User online');
       broadcastOnlineUsers();
+    }
+
+    // Cloud → device webcam relay (browser captures, device renders on OLED)
+    if (passportUser?.id) {
+      const userId = passportUser.id;
+      let activeCamDeviceId: string | null = null;
+
+      const stopActiveCam = () => {
+        if (!activeCamDeviceId) return;
+        animationService.pushCamToDevice(userId, activeCamDeviceId, 'stop');
+        activeCamDeviceId = null;
+      };
+
+      socket.on('device:cam:start', (payload: { deviceId?: string }) => {
+        const deviceId = typeof payload?.deviceId === 'string' ? payload.deviceId : '';
+        if (!deviceId) {
+          socket.emit('device:cam:error', { error: 'deviceId required' });
+          return;
+        }
+        // Rapid start/stop/start: always clear any prior session on this socket first
+        if (activeCamDeviceId) {
+          animationService.pushCamToDevice(userId, activeCamDeviceId, 'stop');
+          activeCamDeviceId = null;
+        }
+        logger.info({ userId, deviceId }, 'cam: browser device:cam:start');
+        const result = animationService.pushCamToDevice(userId, deviceId, 'start');
+        if ('error' in result) {
+          socket.emit('device:cam:error', { deviceId, error: result.error });
+          return;
+        }
+        activeCamDeviceId = deviceId;
+      });
+
+      socket.on('device:cam:stop', (payload: { deviceId?: string }) => {
+        const deviceId = typeof payload?.deviceId === 'string' ? payload.deviceId : activeCamDeviceId;
+        if (!deviceId) return;
+        logger.info({ userId, deviceId }, 'cam: browser device:cam:stop');
+        animationService.pushCamToDevice(userId, deviceId, 'stop');
+        if (activeCamDeviceId === deviceId) activeCamDeviceId = null;
+      });
+
+      socket.on(
+        'device:cam:frame',
+        (payload: { deviceId?: string; frame?: unknown }) => {
+          const deviceId =
+            (typeof payload?.deviceId === 'string' && payload.deviceId) || activeCamDeviceId || '';
+          if (!deviceId || payload?.frame == null) {
+            logger.warn(
+              { userId, deviceId: deviceId || null, hasFrame: payload?.frame != null },
+              'cam: browser frame missing deviceId/frame'
+            );
+            return;
+          }
+          const frame = animationService.coerceCamFrame(payload.frame);
+          const receivedFrameLen = frame?.length ?? -1;
+          if (!frame || receivedFrameLen !== 1024) {
+            logger.warn(
+              {
+                userId,
+                deviceId,
+                receivedFrameLen,
+                frameType: (payload.frame as { constructor?: { name?: string } })?.constructor?.name || typeof payload.frame,
+              },
+              'cam: browser device:cam:frame bad payload'
+            );
+          }
+          if (!frame) {
+            socket.emit('device:cam:error', { deviceId, error: 'Invalid frame payload' });
+            return;
+          }
+          const result = animationService.pushCamToDevice(userId, deviceId, 'frame', frame);
+          if ('error' in result) {
+            // Include bad-length (400) so the UI/logs surface why OLED stays blank
+            socket.emit('device:cam:error', { deviceId, error: result.error });
+          }
+        }
+      );
+
+      socket.on('disconnect', () => {
+        stopActiveCam();
+      });
     }
 
     socket.on('disconnect', (reason) => {

@@ -570,10 +570,15 @@ void displayTask(void *param) {
                     break;
 
                 case NetworkEvent::CAM_START:
-                    // Only interrupt idle GIF playback; leave games/timer/menus alone
+                    // Confirm (atomic token check + activate) BEFORE entering CAM_VIEW.
+                    // Cancellation between those steps can no longer leave a stuck view.
                     if (_state == GIF_PLAYBACK) {
-                        enterState(CAM_VIEW);
-                        showText("[ Web Cam ]", "", "Waiting for feed...", "Tap to exit");
+                        if (webCamConfirmFromDisplay(netEvt.token, true)) {
+                            enterState(CAM_VIEW);
+                            showText("[ Web Cam ]", "", "Waiting for feed...", "Tap to exit");
+                        }
+                    } else {
+                        webCamConfirmFromDisplay(netEvt.token, false);
                     }
                     break;
 
@@ -583,6 +588,16 @@ void displayTask(void *param) {
                     }
                     break;
             }
+        }
+
+        // Reconcile CAM_VIEW if session ended but CAM_STOP enqueue was lost.
+        if (_state == CAM_VIEW) {
+            bool exitReq = webCamConsumeUiExitRequest();
+            if (exitReq || !webCamDisplayShouldShowCam()) {
+                enterState(GIF_PLAYBACK);
+            }
+        } else {
+            (void)webCamConsumeUiExitRequest();  // drop stale sticky bit
         }
 
         // --- Check for gesture events ---

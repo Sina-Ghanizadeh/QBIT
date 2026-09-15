@@ -27,6 +27,7 @@ import * as userService from '../services/user.service';
 import * as deviceService from '../services/device.service';
 import * as reportService from '../services/report.service';
 import * as socketService from '../services/socket.service';
+import * as libraryService from '../services/library.service';
 import logger from '../logger';
 
 const router = Router();
@@ -245,6 +246,20 @@ router.post('/broadcast', adminAuth, validate(adminBroadcastSchema), (req, res) 
   deviceService.broadcastToAllDevices(payload);
   logger.info({ text: payload.text }, 'Admin broadcast sent to all devices');
   res.json({ ok: true });
+});
+
+// POST /api/library/seed-official -- mirror .qgif files from the public QBIT library
+router.post('/library/seed-official', adminAuth, async (req, res) => {
+  const limitRaw = Number((req.body as { limit?: number })?.limit ?? 60);
+  const limit = Math.min(Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 60), 100);
+  try {
+    const result = await libraryService.seedFromOfficialLibrary({ limit });
+    logger.info(result, 'Official library seed finished');
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error({ err }, 'Official library seed failed');
+    res.status(502).json({ error: 'Failed to seed from official library' });
+  }
 });
 
 export default router;
