@@ -270,7 +270,6 @@ export default function App() {
           setNetworkUsers(data.users || []);
         })
         .catch((e) => {
-          setNetworkUsers([]);
           setNetworkError(e instanceof Error ? e.message : 'Failed');
         });
       return;
@@ -286,7 +285,6 @@ export default function App() {
         setNetworkUsers(data.users || []);
       })
       .catch((e) => {
-        setNetworkUsers([]);
         setNetworkError(e instanceof Error ? e.message : 'Failed');
       });
   }, [user, networkMode, selectedGroupId]);
@@ -493,6 +491,8 @@ export default function App() {
     []
   );
 
+  const clearPokeHighlight = useCallback(() => setPokeHighlight(null), []);
+
   const scopedNodeCount = networkUsers.reduce((n, u) => n + 1 + u.devices.length, 0);
   const hasLegacyNodes = devices.length > 0 || onlineUsers.length > 0;
   const hasNetworkNodes = networkMode === 'legacy' ? hasLegacyNodes : scopedNodeCount > 0;
@@ -604,7 +604,7 @@ export default function App() {
                 friendIds={friendIds}
                 friendPairs={friendPairs}
                 pokeHighlight={pokeHighlight}
-                onPokeHighlightEnd={() => setPokeHighlight(null)}
+                onPokeHighlightEnd={clearPokeHighlight}
                 onSelectDevice={handleDeviceSelect}
                 onSelectUser={handleUserSelect}
               />
@@ -613,7 +613,7 @@ export default function App() {
                 users={networkUsers}
                 currentUserId={user?.publicUserId ?? null}
                 pokeHighlight={pokeHighlight}
-                onPokeHighlightEnd={() => setPokeHighlight(null)}
+                onPokeHighlightEnd={clearPokeHighlight}
                 onSelectDevice={handleDeviceSelect}
                 onSelectUser={handleUserSelect}
                 activityByUser={activityByUser}

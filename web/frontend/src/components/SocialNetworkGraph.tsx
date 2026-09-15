@@ -239,7 +239,7 @@ export default function SocialNetworkGraph({
     syncGraph();
   }, [labelsVisible, syncGraph]);
 
-  // Poke highlight glow (same idea as NetworkGraph)
+  // Poke highlight glow — shadow/border only (never clear size; that made nodes vanish in vis-network)
   useEffect(() => {
     if (!pokeHighlight || !networkRef.current) return;
     const nodeId = pokeHighlight.publicUserId
@@ -247,43 +247,74 @@ export default function SocialNetworkGraph({
       : pokeHighlight.deviceId
         ? DEVICE_PREFIX + pokeHighlight.deviceId
         : null;
-    if (!nodeId || !nodesRef.current.get(nodeId)) {
+    const existing = nodeId ? (nodesRef.current.get(nodeId) as { size?: number; borderWidth?: number } | null) : null;
+    if (!nodeId || !existing) {
       onPokeHighlightEnd?.();
       return;
     }
+    const baseSize = typeof existing.size === 'number' ? existing.size : pokeHighlight.publicUserId ? 28 : 16;
+    const baseBorder = typeof existing.borderWidth === 'number' ? existing.borderWidth : 2;
     const combo = Math.min(pokeHighlight.seq, GLOW_MAX_COMBO);
     const color = pokeHighlight.publicUserId ? GLOW_COLOR_USER : GLOW_COLOR_DEVICE;
-    const size = GLOW_SIZE_BASE + combo * GLOW_SIZE_PER_COMBO;
-    const alpha = Math.min(1, GLOW_ALPHA_BASE + combo * GLOW_ALPHA_PER_COMBO);
+    const peakShadow = GLOW_SIZE_BASE + combo * GLOW_SIZE_PER_COMBO;
+    const peakAlpha = Math.min(1, GLOW_ALPHA_BASE + combo * GLOW_ALPHA_PER_COMBO);
     const start = performance.now();
     let raf = 0;
+    let finished = false;
+
+    const restore = () => {
+      if (!nodesRef.current.get(nodeId)) return;
+      nodesRef.current.update({
+        id: nodeId,
+        size: baseSize,
+        borderWidth: baseBorder,
+        shadow: { enabled: false, size: 0, x: 0, y: 0 },
+      });
+    };
+
     const tick = (now: number) => {
+      if (finished) return;
+      if (!nodesRef.current.get(nodeId)) {
+        finished = true;
+        onPokeHighlightEnd?.();
+        return;
+      }
       const t = now - start;
-      let a = alpha;
-      if (t < GLOW_RAMP_MS) a = alpha * (t / GLOW_RAMP_MS);
-      else if (t < GLOW_RAMP_MS + GLOW_FADE_MS) {
-        a = alpha * (1 - (t - GLOW_RAMP_MS) / GLOW_FADE_MS);
+      let a = peakAlpha;
+      let shadowSize = peakShadow;
+      if (t < GLOW_RAMP_MS) {
+        const k = t / GLOW_RAMP_MS;
+        a = peakAlpha * k;
+        shadowSize = peakShadow * k;
+      } else if (t < GLOW_RAMP_MS + GLOW_FADE_MS) {
+        const k = 1 - (t - GLOW_RAMP_MS) / GLOW_FADE_MS;
+        a = peakAlpha * k;
+        shadowSize = peakShadow * k;
       } else {
-        nodesRef.current.update({ id: nodeId, shadow: false, size: undefined });
+        finished = true;
+        restore();
         onPokeHighlightEnd?.();
         return;
       }
       nodesRef.current.update({
         id: nodeId,
-        size,
+        size: baseSize,
+        borderWidth: baseBorder + a * 3,
         shadow: {
           enabled: true,
-          color: color,
-          size: 20 + combo * 4,
+          color,
+          size: shadowSize,
           x: 0,
           y: 0,
         },
-        borderWidth: 2 + a * 4,
       });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (!finished) restore();
+    };
   }, [pokeHighlight, onPokeHighlightEnd]);
 
   return (
