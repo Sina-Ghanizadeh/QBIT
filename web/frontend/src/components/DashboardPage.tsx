@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GroupInfo, NetworkDeviceNode, User } from '../types';
+import ActivityFeed, { type ActivityEventDto } from './ActivityFeed';
+import RoutinesPanel from './RoutinesPanel';
+import WaterPanel from './WaterPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -8,6 +11,7 @@ interface Props {
   onOpenNetwork: () => void;
   onOpenGroups: () => void;
   onOpenDevices: () => void;
+  liveActivity?: ActivityEventDto | null;
 }
 
 interface BotLink {
@@ -25,7 +29,13 @@ interface AnimationGrant {
   createdAt: string;
 }
 
-export default function DashboardPage({ user, onOpenNetwork, onOpenGroups, onOpenDevices }: Props) {
+export default function DashboardPage({
+  user,
+  onOpenNetwork,
+  onOpenGroups,
+  onOpenDevices,
+  liveActivity = null,
+}: Props) {
   const [isGlobal, setIsGlobal] = useState(false);
   const [devices, setDevices] = useState<NetworkDeviceNode[]>([]);
   const [myGroups, setMyGroups] = useState<GroupInfo[]>([]);
@@ -182,6 +192,12 @@ export default function DashboardPage({ user, onOpenNetwork, onOpenGroups, onOpe
       </header>
 
       {error && <div className="page-error">{error}</div>}
+
+      <ActivityFeed apiUrl={API_URL} liveEvent={liveActivity} />
+
+      <WaterPanel />
+
+      <RoutinesPanel />
 
       <section className="dash-section">
         <h2>Global network</h2>

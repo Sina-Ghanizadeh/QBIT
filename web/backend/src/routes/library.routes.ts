@@ -13,7 +13,7 @@ import { requireNotBanned } from '../middleware/requireNotBanned';
 import { libraryBatchSchema } from '../schemas';
 import { LIBRARY_RATE_LIMIT, MAX_QGIF_SIZE } from '../config';
 import * as libraryService from '../services/library.service';
-import { ensurePublicUserId } from '../services/publicUserId.service';
+import { ensurePublicUserId, getUserIdFromPublicId } from '../services/publicUserId.service';
 import logger from '../logger';
 import type { AppUser, LibraryItemResponse } from '../types';
 
@@ -42,12 +42,22 @@ const upload = multer({
   },
 });
 
-// GET /api/library -- list all items (query: sort=newest|stars|downloads, default stars); whitelist DTO only
+// GET /api/library -- list; sort=newest|stars|downloads|trending; optional tag, uploaderId / uploaderPublicId
 router.get('/', (req, res) => {
-  const sort = (req.query.sort as string) || 'stars';
-  const validSort = ['newest', 'stars', 'downloads'].includes(sort) ? (sort as libraryService.LibrarySort) : 'stars';
+  const sortRaw = (req.query.sort as string) || 'stars';
+  const validSort = ['newest', 'stars', 'downloads', 'trending'].includes(sortRaw)
+    ? (sortRaw as libraryService.LibrarySort)
+    : 'stars';
   const userId = req.isAuthenticated() ? (req.user as AppUser).id : undefined;
-  const items = libraryService.getAll(validSort, userId);
+  const tag = typeof req.query.tag === 'string' ? req.query.tag : undefined;
+  let uploaderId: string | undefined;
+  if (typeof req.query.uploaderId === 'string' && req.query.uploaderId) {
+    uploaderId = req.query.uploaderId;
+  } else if (typeof req.query.uploaderPublicId === 'string' && req.query.uploaderPublicId) {
+    const internal = getUserIdFromPublicId(req.query.uploaderPublicId);
+    if (internal) uploaderId = internal;
+  }
+  const items = libraryService.listLibrary({ sort: validSort, userId, tag, uploaderId });
   const payload: LibraryItemResponse[] = items.map((item) => ({
     id: item.id,
     filename: item.filename,
@@ -58,6 +68,7 @@ router.get('/', (req, res) => {
     downloadCount: item.downloadCount,
     starCount: item.starCount,
     starredByMe: item.starredByMe,
+    tags: item.tags || [],
     uploaderPublicId: ensurePublicUserId(item.uploaderId),
   }));
   res.json(payload);
@@ -178,6 +189,53 @@ router.post('/batch-download', validate(libraryBatchSchema), (req, res) => {
     archive.file(f.filepath, { name: safeName });
   }
   archive.finalize();
+});
+
+// GET /api/library/:id -- public item metadata
+router.get('/:id', (req, res) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  if (id === 'upload' || id === 'batch' || id === 'batch-download' || id === 'seed-official') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const userId = req.isAuthenticated() ? (req.user as AppUser).id : undefined;
+  const item = libraryService.getByIdDetailed(id, userId);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  const payload: LibraryItemResponse = {
+    id: item.id,
+    filename: item.filename,
+    uploader: item.uploader,
+    uploadedAt: item.uploadedAt,
+    size: item.size,
+    frameCount: item.frameCount,
+    downloadCount: item.downloadCount,
+    starCount: item.starCount,
+    starredByMe: item.starredByMe,
+    tags: item.tags || [],
+    uploaderPublicId: ensurePublicUserId(item.uploaderId),
+  };
+  res.json(payload);
+});
+
+// PATCH /api/library/:id -- owner sets tags
+router.patch('/:id', requireNotBanned, (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Login required' });
+  }
+  const user = req.user as AppUser;
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const item = libraryService.getById(id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  if (item.uploaderId !== user.id) {
+    return res.status(403).json({ error: 'Only the uploader can edit tags' });
+  }
+  const tags = Array.isArray(req.body?.tags) ? (req.body.tags as unknown[]) : null;
+  if (!tags) return res.status(400).json({ error: 'tags array required' });
+  const result = libraryService.setTags(
+    id,
+    tags.filter((t): t is string => typeof t === 'string')
+  );
+  if ('error' in result) return res.status(404).json({ error: result.error });
+  res.json({ ok: true, tags: result.tags });
 });
 
 // GET /api/library/:id/download -- download with Content-Disposition

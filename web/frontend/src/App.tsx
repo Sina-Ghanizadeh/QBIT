@@ -12,8 +12,11 @@ import UserPokeDialog from './components/UserPokeDialog';
 import AddFriendDialog from './components/AddFriendDialog';
 import FlashPage from './components/FlashPage';
 import LibraryPage from './components/LibraryPage';
+import LibraryItemPage from './components/LibraryItemPage';
 import PokeHistoryPanel from './components/PokeHistoryPanel';
+import PokeStudio from './components/PokeStudio';
 import ReportDialog from './components/ReportDialog';
+import type { ActivityEventDto } from './components/ActivityFeed';
 import type { Device, User, OnlineUser, NetworkUserNode, GroupInfo } from './types';
 import { isTTSSupported, speakPokeMessage } from './utils/tts';
 import { getPokeHistory, addPokeHistory, clearPokeHistory, type PokeHistoryEntry } from './utils/pokeHistory';
@@ -46,8 +49,14 @@ export default function App() {
   const [publicFriends, setPublicFriends] = useState(true);
   const [notifications, setNotifications] = useState<PokeNotification[]>([]);
   const [showPokeHistory, setShowPokeHistory] = useState(false);
+  const [showPokeStudio, setShowPokeStudio] = useState(false);
   const [pokeHistoryEntries, setPokeHistoryEntries] = useState<PokeHistoryEntry[]>([]);
   const [showReport, setShowReport] = useState(false);
+  const [liveActivity, setLiveActivity] = useState<ActivityEventDto | null>(null);
+  const [activityByUser, setActivityByUser] = useState<Record<string, string>>({});
+  const [libraryItemId, setLibraryItemId] = useState<string | null>(null);
+  const [libraryUploaderFilter, setLibraryUploaderFilter] = useState<string | null>(null);
+  const [libraryTagFilter, setLibraryTagFilter] = useState<string | null>(null);
   const notificationIdRef = useRef(0);
   const socketRef = useRef<Socket | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -115,10 +124,78 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then((u) => {
         setUser(u);
-        if (u) setPage('dashboard');
+        if (u && !window.location.pathname.startsWith('/library/')) setPage('dashboard');
       })
       .catch(() => setUser(null));
   }, []);
+
+  useEffect(() => {
+    const match = window.location.pathname.match(/^\/library\/([^/]+)\/?$/);
+    if (match) {
+      setPage('library');
+      setLibraryItemId(decodeURIComponent(match[1]));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (page !== 'library') return;
+    if (libraryItemId) {
+      const path = `/library/${libraryItemId}`;
+      if (window.location.pathname !== path) window.history.pushState({}, '', path);
+    } else if (window.location.pathname.startsWith('/library/')) {
+      window.history.pushState({}, '', '/');
+    }
+  }, [page, libraryItemId]);
+
+  useEffect(() => {
+    const onPop = () => {
+      const match = window.location.pathname.match(/^\/library\/([^/]+)\/?$/);
+      if (match) {
+        setPage('library');
+        setLibraryItemId(decodeURIComponent(match[1]));
+      } else {
+        setLibraryItemId(null);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const rememberActivity = useCallback((ev: ActivityEventDto) => {
+    setLiveActivity(ev);
+    const summary =
+      ev.kind === 'poke_device' || ev.kind === 'poke_user' || ev.kind === 'schedule_poke'
+        ? `${ev.actorName || 'Someone'}: ${ev.text || ev.kind}`
+        : `${ev.actorName || 'Someone'} · ${ev.kind}`;
+    setActivityByUser((prev) => {
+      const next = { ...prev };
+      if (ev.actorPublicUserId) next[ev.actorPublicUserId] = summary;
+      if (ev.targetPublicUserId) next[ev.targetPublicUserId] = summary;
+      return next;
+    });
+  }, []);
+  const rememberActivityRef = useRef(rememberActivity);
+  rememberActivityRef.current = rememberActivity;
+
+  useEffect(() => {
+    if (!user) return;
+    fetch(`${API_URL}/api/me/activity?limit=40`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : { events: [] }))
+      .then((d) => {
+        const events: ActivityEventDto[] = Array.isArray(d.events) ? d.events : [];
+        const map: Record<string, string> = {};
+        for (const ev of events) {
+          const summary =
+            ev.kind === 'poke_device' || ev.kind === 'poke_user' || ev.kind === 'schedule_poke'
+              ? `${ev.actorName || 'Someone'}: ${ev.text || ev.kind}`
+              : `${ev.actorName || 'Someone'} · ${ev.kind}`;
+          if (ev.actorPublicUserId && !map[ev.actorPublicUserId]) map[ev.actorPublicUserId] = summary;
+          if (ev.targetPublicUserId && !map[ev.targetPublicUserId]) map[ev.targetPublicUserId] = summary;
+        }
+        setActivityByUser(map);
+      })
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (!user && (page === 'dashboard' || page === 'groups' || page === 'devices')) {
@@ -320,6 +397,10 @@ export default function App() {
       }, 10000);
     });
 
+    s.on('activity:new', (ev: ActivityEventDto) => {
+      rememberActivityRef.current(ev);
+    });
+
     socketRef.current = s;
     setSocket(s);
     return () => {
@@ -419,7 +500,20 @@ export default function App() {
 
   return (
     <div className="app">
-      <Navbar user={user} apiUrl={API_URL} page={page} setPage={setPage} onUserChange={setUser} />
+      <Navbar
+        user={user}
+        apiUrl={API_URL}
+        page={page}
+        setPage={(p) => {
+          setPage(p);
+          setLibraryItemId(null);
+          if (p !== 'library') {
+            setLibraryUploaderFilter(null);
+            setLibraryTagFilter(null);
+          }
+        }}
+        onUserChange={setUser}
+      />
       <main className="main">
         {page === 'dashboard' && user && (
           <DashboardPage
@@ -427,6 +521,7 @@ export default function App() {
             onOpenNetwork={() => setPage('network')}
             onOpenGroups={() => setPage('groups')}
             onOpenDevices={() => setPage('devices')}
+            liveActivity={liveActivity}
           />
         )}
         {page === 'devices' && user && (
@@ -521,6 +616,7 @@ export default function App() {
                 onPokeHighlightEnd={() => setPokeHighlight(null)}
                 onSelectDevice={handleDeviceSelect}
                 onSelectUser={handleUserSelect}
+                activityByUser={activityByUser}
               />
             )}
             {hasNetworkNodes && !showPokeHistory && (
@@ -602,7 +698,37 @@ export default function App() {
           </>
         )}
         {page === 'flash' && <FlashPage />}
-        {page === 'library' && <LibraryPage user={user} apiUrl={API_URL} />}
+        {page === 'library' &&
+          (libraryItemId ? (
+            <LibraryItemPage
+              id={libraryItemId}
+              apiUrl={API_URL}
+              user={user}
+              onBack={() => setLibraryItemId(null)}
+              onUploader={(uploaderPublicId) => {
+                setLibraryItemId(null);
+                setLibraryUploaderFilter(uploaderPublicId || null);
+                setLibraryTagFilter(null);
+              }}
+              onTag={(tag) => {
+                setLibraryItemId(null);
+                setLibraryTagFilter(tag);
+                setLibraryUploaderFilter(null);
+              }}
+            />
+          ) : (
+            <LibraryPage
+              user={user}
+              apiUrl={API_URL}
+              initialUploaderId={libraryUploaderFilter}
+              initialTag={libraryTagFilter}
+              onOpenItem={(id) => setLibraryItemId(id)}
+              onClearFilters={() => {
+                setLibraryUploaderFilter(null);
+                setLibraryTagFilter(null);
+              }}
+            />
+          ))}
       </main>
       {selectedDevice && (
         <PokeDialog
@@ -713,6 +839,17 @@ export default function App() {
           onSubmitted={() => {}}
         />
       )}
+      {page === 'network' && user && (
+        <button
+          type="button"
+          className={`studio-floating-btn${hasNetworkNodes ? ' studio-floating-btn-stacked' : ''}`}
+          onClick={() => setShowPokeStudio(true)}
+          title="Poke Studio"
+          aria-label="Open Poke Studio"
+        >
+          Studio
+        </button>
+      )}
       {page === 'network' && (
         <button
           type="button"
@@ -725,6 +862,14 @@ export default function App() {
             <path fill="currentColor" d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" />
           </svg>
         </button>
+      )}
+      {showPokeStudio && user && (
+        <PokeStudio
+          open={showPokeStudio}
+          onClose={() => setShowPokeStudio(false)}
+          userDisplayName={user.displayName || 'You'}
+          onlineUsers={onlineUsers}
+        />
       )}
       <div className="poke-notifications" aria-live="polite">
         {notifications.map((n) => (

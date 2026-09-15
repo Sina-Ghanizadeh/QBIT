@@ -13,12 +13,20 @@ import {
   grantIdParamSchema,
   setAnimationSchema,
   botPlatformParamSchema,
+  createScheduleSchema,
+  updateScheduleSchema,
+  scheduleIdParamSchema,
+  waterSettingsSchema,
+  waterDrinkSchema,
 } from '../schemas';
 import * as networkService from '../services/network.service';
 import * as claimService from '../services/claim.service';
 import * as animationService from '../services/animation.service';
 import * as botService from '../services/bot.service';
 import * as socialService from '../services/social.service';
+import * as activityService from '../services/activity.service';
+import * as scheduleService from '../services/schedule.service';
+import * as waterService from '../services/water.service';
 import { getUserIdFromPublicId, ensurePublicUserId } from '../services/publicUserId.service';
 import type { AppUser } from '../types';
 
@@ -52,6 +60,110 @@ router.get('/me/devices', (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   res.json({ devices: networkService.getMyDevices(user.id) });
+});
+
+// GET /api/me/activity
+router.get('/me/activity', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '40'), 10) || 40));
+  res.json({ events: activityService.listForUser(user.id, limit) });
+});
+
+// GET /api/me/schedules
+router.get('/me/schedules', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.json({ schedules: scheduleService.listForOwner(user.id) });
+});
+
+// POST /api/me/schedules
+router.post('/me/schedules', requireNotBanned, validate(createScheduleSchema), (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const result = scheduleService.create({
+    ownerUserId: user.id,
+    targetType: req.body.targetType,
+    targetId: req.body.targetId,
+    text: req.body.text,
+    cronType: req.body.cronType,
+    timeUtc: req.body.timeUtc,
+    weekday: req.body.weekday,
+  });
+  if ('error' in result) return res.status(result.status).json({ error: result.error });
+  res.json({ schedule: result.schedule });
+});
+
+// PATCH /api/me/schedules/:id
+router.patch(
+  '/me/schedules/:id',
+  requireNotBanned,
+  validateParams(scheduleIdParamSchema),
+  validate(updateScheduleSchema),
+  (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const result = scheduleService.update(user.id, req.params.id as string, {
+      text: req.body.text,
+      cronType: req.body.cronType,
+      timeUtc: req.body.timeUtc,
+      weekday: req.body.weekday,
+      enabled: req.body.enabled,
+    });
+    if ('error' in result) return res.status(result.status).json({ error: result.error });
+    res.json({ schedule: result.schedule });
+  }
+);
+
+// DELETE /api/me/schedules/:id
+router.delete(
+  '/me/schedules/:id',
+  requireNotBanned,
+  validateParams(scheduleIdParamSchema),
+  (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const result = scheduleService.remove(user.id, req.params.id as string);
+    if ('error' in result) return res.status(result.status).json({ error: result.error });
+    res.json({ ok: true });
+  }
+);
+
+
+// GET /api/me/water
+router.get('/me/water', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.json({
+    ...waterService.getStatus(user.id),
+    logs: waterService.listRecentLogs(user.id, 12),
+  });
+});
+
+// PATCH /api/me/water/settings
+router.patch('/me/water/settings', requireNotBanned, validate(waterSettingsSchema), (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const result = waterService.updateSettings(user.id, {
+    enabled: req.body.enabled,
+    intervalMinutes: req.body.intervalMinutes,
+    reminderMode: req.body.reminderMode,
+    pokeText: req.body.pokeText,
+    libraryId: req.body.libraryId,
+    targetDeviceId: req.body.targetDeviceId,
+    dailyGoalMl: req.body.dailyGoalMl,
+    glassMl: req.body.glassMl,
+  });
+  if ('error' in result) return res.status(result.status).json({ error: result.error });
+  res.json(result.status);
+});
+
+// POST /api/me/water/drink
+router.post('/me/water/drink', requireNotBanned, validate(waterDrinkSchema), (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const result = waterService.logDrink(user.id, req.body.amountMl);
+  res.json(result);
 });
 
 // PATCH /api/me/devices/:deviceId

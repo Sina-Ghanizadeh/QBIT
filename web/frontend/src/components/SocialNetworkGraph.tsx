@@ -13,6 +13,8 @@ interface Props {
   onPokeHighlightEnd?: () => void;
   onSelectDevice: (device: Device) => void;
   onSelectUser: (user: OnlineUser) => void;
+  /** publicUserId -> last activity summary for tooltips */
+  activityByUser?: Record<string, string>;
 }
 
 const GLOW_COLOR_DEVICE = '#d32f2f';
@@ -58,6 +60,7 @@ export default function SocialNetworkGraph({
   onPokeHighlightEnd,
   onSelectDevice,
   onSelectUser,
+  activityByUser = {},
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -69,6 +72,7 @@ export default function SocialNetworkGraph({
   const onSelectDeviceRef = useRef(onSelectDevice);
   const onSelectUserRef = useRef(onSelectUser);
   const currentUserIdRef = useRef(currentUserId);
+  const activityByUserRef = useRef(activityByUser);
 
   useEffect(() => {
     usersRef.current = users;
@@ -82,6 +86,9 @@ export default function SocialNetworkGraph({
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
+  useEffect(() => {
+    activityByUserRef.current = activityByUser;
+  }, [activityByUser]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -160,19 +167,23 @@ export default function SocialNetworkGraph({
     for (const u of usersRef.current) {
       const uid = USER_PREFIX + u.publicUserId;
       wantNodes.add(uid);
+      const lastAct = activityByUserRef.current[u.publicUserId];
       const userNode = {
         id: uid,
-        label: showLabel ? u.displayName : '',
+        label: showLabel ? `${u.displayName}${u.online ? ' ●' : ''}` : u.online ? '●' : '',
         shape: u.avatar ? 'circularImage' : 'dot',
         image: u.avatar || undefined,
-        size: 28,
+        size: u.online ? 32 : 26,
+        borderWidth: u.online ? 3 : 2,
         color: {
-          border: u.online ? '#1976d2' : '#555',
-          background: u.online ? '#0d47a1' : '#2a2a2a',
-          highlight: { border: '#42a5f5', background: '#1565c0' },
+          border: u.online ? '#4caf50' : '#555',
+          background: u.online ? '#1b5e20' : '#2a2a2a',
+          highlight: { border: '#81c784', background: '#2e7d32' },
         },
         font: { color: '#fff', size: 13 },
-        title: `${u.displayName}${u.isGlobal ? ' · global' : ''}${u.online ? ' · online' : ''}`,
+        title: `${u.displayName}${u.isGlobal ? ' · global' : ''}${u.online ? ' · online' : ' · offline'}${
+          lastAct ? `\n${lastAct}` : ''
+        }`,
       };
       if (nodes.get(uid)) nodes.update(userNode);
       else nodes.add(userNode);
@@ -221,7 +232,7 @@ export default function SocialNetworkGraph({
   useEffect(() => {
     usersRef.current = users;
     syncGraph();
-  }, [users, syncGraph]);
+  }, [users, syncGraph, activityByUser]);
 
   useEffect(() => {
     labelsVisibleRef.current = labelsVisible;

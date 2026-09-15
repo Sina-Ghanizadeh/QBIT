@@ -103,6 +103,59 @@ export const libraryBatchSchema = z.object({
   ids: z.array(z.string().min(1).max(128).regex(/^[a-zA-Z0-9-]+$/)).min(1).max(100),
 });
 
+export const libraryTagsSchema = z.object({
+  tags: z.array(z.string().min(1).max(32)).max(8),
+});
+
+export const createScheduleSchema = z.object({
+  targetType: z.enum(['device', 'user']),
+  targetId: z.string().min(1).max(128),
+  text: z.string().min(1).max(25),
+  cronType: z.enum(['daily', 'weekly']),
+  timeUtc: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  weekday: z.number().int().min(0).max(6).nullable().optional(),
+});
+
+export const updateScheduleSchema = z.object({
+  text: z.string().min(1).max(25).optional(),
+  cronType: z.enum(['daily', 'weekly']).optional(),
+  timeUtc: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
+  weekday: z.number().int().min(0).max(6).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const scheduleIdParamSchema = z.object({
+  id: z.string().length(24).regex(/^[a-f0-9]+$/),
+});
+
+export const waterSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  intervalMinutes: z.number().int().min(15).max(720).optional(),
+  reminderMode: z.enum(['poke', 'gif', 'both']).optional(),
+  pokeText: z.string().min(1).max(25).optional(),
+  libraryId: z.string().min(1).max(128).nullable().optional(),
+  targetDeviceId: z.string().min(1).max(128).nullable().optional(),
+  dailyGoalMl: z.number().int().min(250).max(10000).optional(),
+  glassMl: z.number().int().min(50).max(1000).optional(),
+}).refine(
+  (d) =>
+    d.enabled !== undefined ||
+    d.intervalMinutes !== undefined ||
+    d.reminderMode !== undefined ||
+    d.pokeText !== undefined ||
+    d.libraryId !== undefined ||
+    d.targetDeviceId !== undefined ||
+    d.dailyGoalMl !== undefined ||
+    d.glassMl !== undefined,
+  { message: 'At least one water setting field is required' }
+);
+
+export const waterDrinkSchema = z.object({
+  amountMl: z.number().int().min(50).max(2000).optional(),
+});
+
+
+
 // POST /api/admin/login
 export const adminLoginSchema = z.object({
   username: z.string().min(1).max(64),

@@ -96,7 +96,11 @@ export interface LibraryItem {
   downloadCount: number;
   starCount?: number;
   starredByMe?: boolean;
+  tags?: string[];
 }
 
 /** API response shape: uploaderId replaced by uploaderPublicId, no internal fields */
-export type LibraryItemResponse = Omit<LibraryItem, 'uploaderId'> & { uploaderPublicId: string };
+export type LibraryItemResponse = Omit<LibraryItem, 'uploaderId'> & {
+  uploaderPublicId: string;
+  tags?: string[];
+};

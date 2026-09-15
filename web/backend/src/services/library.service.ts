@@ -189,34 +189,122 @@ export function contentDisposition(filename: string): string {
 //  Public API
 // ---------------------------------------------------------------------------
 
-export type LibrarySort = 'newest' | 'stars' | 'downloads';
+export type LibrarySort = 'newest' | 'stars' | 'downloads' | 'trending';
+
+export interface LibraryListOptions {
+  sort?: LibrarySort;
+  userId?: string;
+  tag?: string;
+  uploaderId?: string;
+}
+
+const stmtTagsForLib = db.prepare('SELECT tag FROM library_tags WHERE libraryId = ? ORDER BY tag');
+const stmtTagsDelete = db.prepare('DELETE FROM library_tags WHERE libraryId = ?');
+const stmtTagInsert = db.prepare('INSERT OR IGNORE INTO library_tags (libraryId, tag) VALUES (?, ?)');
+const stmtLibsByTag = db.prepare('SELECT libraryId FROM library_tags WHERE tag = ?');
+
+function normalizeTag(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 32);
+}
+
+export function getTags(libraryId: string): string[] {
+  return (stmtTagsForLib.all(libraryId) as { tag: string }[]).map((r) => r.tag);
+}
+
+export function setTags(
+  libraryId: string,
+  tags: string[]
+): { ok: true; tags: string[] } | { error: string } {
+  if (!cache.has(libraryId)) return { error: 'Not found' };
+  const cleaned = [...new Set(tags.map(normalizeTag).filter((x) => x.length > 0))].slice(0, 8);
+  const tx = db.transaction(() => {
+    stmtTagsDelete.run(libraryId);
+    for (const tag of cleaned) stmtTagInsert.run(libraryId, tag);
+  });
+  tx();
+  return { ok: true, tags: cleaned };
+}
 
 export function getAll(sort: LibrarySort = 'stars', userId?: string): LibraryItem[] {
+  return listLibrary({ sort, userId });
+}
+
+export function listLibrary(opts: LibraryListOptions = {}): LibraryItem[] {
+  const sort = opts.sort || 'stars';
+  const userId = opts.userId;
   const starRows = stmtStarCounts.all() as { libraryId: string; cnt: number }[];
   const starCountMap = new Map(starRows.map((r) => [r.libraryId, r.cnt]));
   const starredSet = new Set<string>();
   if (userId) {
-    const all = [...cache.values()];
-    for (const item of all) {
+    for (const item of cache.values()) {
       if ((stmtStarGet.get(userId, item.id) as unknown) != null) starredSet.add(item.id);
     }
   }
-  const items: LibraryItem[] = [...cache.values()].map((item) => {
-    const { contentHash: _h, ...rest } = item;
-    return {
-      ...rest,
-      starCount: starCountMap.get(item.id) ?? 0,
-      starredByMe: userId ? starredSet.has(item.id) : undefined,
-    };
-  });
+
+  let idFilter: Set<string> | null = null;
+  if (opts.tag) {
+    const tag = normalizeTag(opts.tag);
+    idFilter = new Set(
+      (stmtLibsByTag.all(tag) as { libraryId: string }[]).map((r) => r.libraryId)
+    );
+  }
+
+  const items: LibraryItem[] = [...cache.values()]
+    .filter((item) => {
+      if (idFilter && !idFilter.has(item.id)) return false;
+      if (opts.uploaderId && item.uploaderId !== opts.uploaderId) return false;
+      return true;
+    })
+    .map((item) => {
+      const { contentHash: _h, ...rest } = item;
+      return {
+        ...rest,
+        starCount: starCountMap.get(item.id) ?? 0,
+        starredByMe: userId ? starredSet.has(item.id) : undefined,
+        tags: getTags(item.id),
+      };
+    });
+
   if (sort === 'newest') {
     items.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
   } else if (sort === 'stars') {
-    items.sort((a, b) => (b.starCount ?? 0) - (a.starCount ?? 0) || new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    items.sort(
+      (a, b) =>
+        (b.starCount ?? 0) - (a.starCount ?? 0) ||
+        new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+    );
+  } else if (sort === 'trending') {
+    const score = (x: LibraryItem) => (x.starCount ?? 0) * 3 + (x.downloadCount ?? 0);
+    items.sort(
+      (a, b) =>
+        score(b) - score(a) || new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+    );
   } else {
-    items.sort((a, b) => (b.downloadCount ?? 0) - (a.downloadCount ?? 0) || new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    items.sort(
+      (a, b) =>
+        (b.downloadCount ?? 0) - (a.downloadCount ?? 0) ||
+        new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+    );
   }
   return items;
+}
+
+export function getByIdDetailed(id: string, userId?: string): LibraryItem | null {
+  const base = cache.get(id);
+  if (!base) return null;
+  const { contentHash: _h, ...rest } = base;
+  const starRows = stmtStarCounts.all() as { libraryId: string; cnt: number }[];
+  const starCount = starRows.find((r) => r.libraryId === id)?.cnt ?? 0;
+  let starredByMe: boolean | undefined;
+  if (userId) {
+    starredByMe = (stmtStarGet.get(userId, id) as unknown) != null;
+  }
+  return {
+    ...(rest as LibraryItem),
+    starCount,
+    starredByMe,
+    tags: getTags(id),
+  };
 }
 
 export function incrementDownloadCount(id: string): void {
@@ -337,6 +425,11 @@ export function deleteItem(id: string): boolean {
   }
 
   stmtDeleteStars.run(id);
+  try {
+    stmtTagsDelete.run(id);
+  } catch {
+    /* tags table may be empty */
+  }
   stmtDelete.run(id);
   cache.delete(id);
   return true;

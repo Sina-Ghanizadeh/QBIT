@@ -10,6 +10,8 @@ import * as groupService from './group.service';
 import * as deviceService from './device.service';
 import * as libraryService from './library.service';
 import logger from '../logger';
+import * as activityService from './activity.service';
+import * as userService from './user.service';
 
 export type GranteeType = 'user' | 'group';
 
@@ -203,10 +205,24 @@ export function pushCamToDevice(
       device.ws.send(JSON.stringify({ type: 'cam_start' }));
       camSessions.set(deviceId, actorUserId);
       logger.info({ deviceId, userId: actorUserId }, 'cam: sent cam_start to device');
+      const actor = userService.getUserById(actorUserId);
+      activityService.record({
+        kind: 'cam_start',
+        actorUserId,
+        actorName: actor?.displayName || null,
+        targetDeviceId: deviceId,
+      });
     } else if (action === 'stop') {
       device.ws.send(JSON.stringify({ type: 'cam_stop' }));
       camSessions.delete(deviceId);
       logger.info({ deviceId, userId: actorUserId }, 'cam: sent cam_stop to device');
+      const actor = userService.getUserById(actorUserId);
+      activityService.record({
+        kind: 'cam_stop',
+        actorUserId,
+        actorName: actor?.displayName || null,
+        targetDeviceId: deviceId,
+      });
     } else if (action === 'frame') {
       const receivedLen = frame?.length ?? 0;
       if (!frame || receivedLen !== 1024) {

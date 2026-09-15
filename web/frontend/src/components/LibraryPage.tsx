@@ -77,14 +77,19 @@ interface LibraryItem {
   downloadCount?: number;
   starCount?: number;
   starredByMe?: boolean;
+  tags?: string[];
 }
 
 interface Props {
   user: User | null;
   apiUrl: string;
+  initialUploaderId?: string | null;
+  initialTag?: string | null;
+  onOpenItem?: (id: string) => void;
+  onClearFilters?: () => void;
 }
 
-type SortMode = 'stars' | 'downloads' | 'newest' | 'oldest' | 'az' | 'za';
+type SortMode = 'stars' | 'downloads' | 'newest' | 'oldest' | 'az' | 'za' | 'trending';
 
 function formatSize(b: number): string {
   if (b < 1024) return b + ' B';
@@ -101,7 +106,14 @@ function formatDate(iso: string): string {
   });
 }
 
-export default function LibraryPage({ user, apiUrl }: Props) {
+export default function LibraryPage({
+  user,
+  apiUrl,
+  initialUploaderId = null,
+  initialTag = null,
+  onOpenItem,
+  onClearFilters,
+}: Props) {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -112,6 +124,10 @@ export default function LibraryPage({ user, apiUrl }: Props) {
   // Filtering and sorting
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('stars');
+  const [tagFilter, setTagFilter] = useState(initialTag || '');
+  const [uploaderFilter, setUploaderFilter] = useState(initialUploaderId || '');
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareBlobs, setCompareBlobs] = useState<Record<string, string>>({});
 
   // Multi-select
   const [selectMode, setSelectMode] = useState(false);
@@ -119,10 +135,28 @@ export default function LibraryPage({ user, apiUrl }: Props) {
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchDownloading, setBatchDownloading] = useState(false);
 
+  useEffect(() => {
+    setTagFilter(initialTag || '');
+  }, [initialTag]);
+  useEffect(() => {
+    setUploaderFilter(initialUploaderId || '');
+  }, [initialUploaderId]);
+
   const fetchItems = useCallback(async () => {
     try {
-      const sortParam = sortMode === 'stars' ? 'stars' : sortMode === 'downloads' ? 'downloads' : 'newest';
-      const res = await fetch(`${apiUrl}/api/library?sort=${sortParam}`);
+      const params = new URLSearchParams();
+      const sortParam =
+        sortMode === 'stars'
+          ? 'stars'
+          : sortMode === 'downloads'
+            ? 'downloads'
+            : sortMode === 'trending'
+              ? 'trending'
+              : 'newest';
+      params.set('sort', sortParam);
+      if (tagFilter.trim()) params.set('tag', tagFilter.trim().toLowerCase());
+      if (uploaderFilter.trim()) params.set('uploaderPublicId', uploaderFilter.trim());
+      const res = await fetch(`${apiUrl}/api/library?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setItems(data);
@@ -132,7 +166,7 @@ export default function LibraryPage({ user, apiUrl }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, sortMode]);
+  }, [apiUrl, sortMode, tagFilter, uploaderFilter]);
 
   useEffect(() => {
     fetchItems();
@@ -407,6 +441,38 @@ export default function LibraryPage({ user, apiUrl }: Props) {
     }
   };
 
+  useEffect(() => {
+    if (compareIds.length === 0) return;
+    let cancelled = false;
+    for (const id of compareIds) {
+      void fetch(`${apiUrl}/api/library/${id}/raw`)
+        .then((r) => r.arrayBuffer())
+        .then((buf) => {
+          if (cancelled) return;
+          const url = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' }));
+          setCompareBlobs((p) => {
+            if (p[id]) {
+              URL.revokeObjectURL(url);
+              return p;
+            }
+            return { ...p, [id]: url };
+          });
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [compareIds, apiUrl]);
+
+  const toggleCompare = (id: string) => {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 2) return [prev[1], id];
+      return [...prev, id];
+    });
+  };
+
   // Count how many selected items are owned by current user
   const ownedSelectedCount = useMemo(() => {
     if (!user) return 0;
@@ -445,28 +511,76 @@ export default function LibraryPage({ user, apiUrl }: Props) {
         onUploaded={() => void fetchItems()}
       />
 
-      {/* Toolbar: search + sort */}
-      {items.length > 0 && (
-        <div className="library-toolbar">
-          <input
-            className="library-search"
-            type="text"
-            placeholder="Search by name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <select
-            className="library-sort"
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
+      {/* Toolbar: search + sort + tag */}
+      <div className="library-toolbar">
+        <input
+          className="library-search"
+          type="text"
+          placeholder="Search by name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <input
+          className="library-search"
+          type="text"
+          placeholder="Filter tag..."
+          value={tagFilter}
+          onChange={(e) => setTagFilter(e.target.value)}
+        />
+        <select
+          className="library-sort"
+          value={sortMode}
+          onChange={(e) => setSortMode(e.target.value as SortMode)}
+        >
+          <option value="trending">Trending</option>
+          <option value="stars">Most stars</option>
+          <option value="downloads">Most downloads</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="az">Name A-Z</option>
+          <option value="za">Name Z-A</option>
+        </select>
+      </div>
+      {(uploaderFilter || tagFilter) && (
+        <div className="library-filter-banner">
+          <span className="page-sub">
+            {uploaderFilter ? `Uploader filter active` : ''}
+            {uploaderFilter && tagFilter ? ' · ' : ''}
+            {tagFilter ? `Tag: #${tagFilter}` : ''}
+          </span>
+          <button
+            type="button"
+            className="btn-text"
+            onClick={() => {
+              setUploaderFilter('');
+              setTagFilter('');
+              onClearFilters?.();
+            }}
           >
-            <option value="stars">Most stars</option>
-            <option value="downloads">Most downloads</option>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="az">Name A-Z</option>
-            <option value="za">Name Z-A</option>
-          </select>
+            Clear filters
+          </button>
+        </div>
+      )}
+
+      {compareIds.length > 0 && (
+        <div className="library-compare">
+          <div className="library-compare-head">
+            <strong>Compare</strong>
+            <button type="button" className="btn-text" onClick={() => setCompareIds([])}>
+              Clear
+            </button>
+          </div>
+          <div className="library-compare-grid">
+            {compareIds.map((id) => {
+              const item = items.find((i) => i.id === id);
+              return (
+                <div key={id} className="library-compare-pane">
+                  <div className="page-sub">{item?.filename || id}</div>
+                  {compareBlobs[id] ? <QgifPreview src={compareBlobs[id]} /> : <div>Loading…</div>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -546,7 +660,7 @@ export default function LibraryPage({ user, apiUrl }: Props) {
         <div className="library-empty">Loading...</div>
       ) : displayItems.length === 0 ? (
         <div className="library-empty">
-          {searchQuery.trim()
+          {searchQuery.trim() || tagFilter.trim()
             ? 'No files match your search.'
             : 'No .qgif files yet. Be the first to upload one!'}
         </div>
@@ -554,9 +668,15 @@ export default function LibraryPage({ user, apiUrl }: Props) {
         <div className="library-grid">
           {displayItems.map((item) => (
             <div
-              className={`library-card${selectMode && selectedIds.has(item.id) ? ' selected' : ''}`}
+              className={`library-card${selectMode && selectedIds.has(item.id) ? ' selected' : ''}${
+                compareIds.includes(item.id) ? ' compare-selected' : ''
+              }`}
               key={item.id}
-              onClick={selectMode ? () => toggleSelect(item.id) : undefined}
+              onClick={
+                selectMode
+                  ? () => toggleSelect(item.id)
+                  : () => onOpenItem?.(item.id)
+              }
             >
               {selectMode && (
                 <div className="library-card-checkbox">
@@ -614,20 +734,62 @@ export default function LibraryPage({ user, apiUrl }: Props) {
                   {item.frameCount} frames &middot; {formatSize(item.size)}
                 </div>
                 <div className="library-card-meta">
-                  by {item.uploader} &middot; {formatDate(item.uploadedAt)}
+                  by{' '}
+                  <button
+                    type="button"
+                    className="btn-text"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setUploaderFilter(item.uploaderPublicId);
+                    }}
+                  >
+                    {item.uploader}
+                  </button>{' '}
+                  &middot; {formatDate(item.uploadedAt)}
                 </div>
+                {(item.tags || []).length > 0 && (
+                  <div className="chip-row library-card-tags">
+                    {(item.tags || []).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className="chip"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTagFilter(t);
+                        }}
+                      >
+                        #{t}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {!selectMode && (
                   <div className="library-card-actions">
                     <a
                       className="btn-download"
                       href={`${apiUrl}/api/library/${item.id}/download`}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       Download
                     </a>
+                    <button
+                      type="button"
+                      className="btn-lib-action btn-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCompare(item.id);
+                      }}
+                    >
+                      {compareIds.includes(item.id) ? 'Compared' : 'Compare'}
+                    </button>
                     {user && user.publicUserId === item.uploaderPublicId && (
                       <button
                         className="btn-delete-lib"
-                        onClick={() => handleDelete(item.id, item.filename)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item.id, item.filename);
+                        }}
                       >
                         Delete
                       </button>

@@ -2172,4 +2172,254 @@ body {
   cursor: pointer;
 }
 
+.activity-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
 
+.activity-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+}
+
+.activity-msg {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.activity-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.routines-form {
+  flex-wrap: wrap;
+}
+
+.routines-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-floating-btn {
+  position: fixed;
+  bottom: 16px;
+  right: 64px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(24, 24, 24, 0.8);
+  backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  z-index: 25;
+}
+
+.studio-floating-btn-stacked {
+  bottom: 112px;
+}
+
+.studio-floating-btn:hover {
+  border-color: #4caf50;
+  color: #a5d6a7;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+  padding: 16px;
+}
+
+.modal-card {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.oled-preview {
+  width: 256px;
+  height: 128px;
+  image-rendering: pixelated;
+  border-radius: 6px;
+  border: 1px solid #2a4a2a;
+  margin: 12px 0;
+  background: #0a0a0a;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.chip {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chip-secondary {
+  opacity: 0.85;
+}
+
+.chip:hover {
+  border-color: #4caf50;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.text-input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.library-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+
+.library-compare {
+  margin: 12px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.library-compare-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.library-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.library-compare-pane {
+  min-height: 80px;
+}
+
+.library-card.compare-selected {
+  outline: 2px solid #4caf50;
+}
+
+.library-card-tags {
+  margin-top: 6px;
+}
+
+.library-item-preview {
+  max-width: 320px;
+  margin: 16px 0;
+}
+
+.poke-studio .btn-primary {
+  margin-top: 4px;
+}
+
+
+
+
+
+.water-panel.water-overdue {
+  border-color: rgba(33, 150, 243, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(33, 150, 243, 0.2);
+}
+
+.water-stats {
+  margin: 12px 0;
+}
+
+.water-stat-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.water-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.water-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1e88e5, #4fc3f7);
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
+.water-overdue-text {
+  color: #81d4fa;
+}
+
+.water-drink-btn {
+  min-width: 160px;
+}
+
+.water-settings {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}

@@ -12,6 +12,7 @@ import * as claimService from './claim.service';
 import * as friendService from './friend.service';
 import * as socketService from './socket.service';
 import * as animationService from './animation.service';
+import * as activityService from './activity.service';
 import { ensurePublicUserId } from './publicUserId.service';
 import db from '../db';
 import logger from '../logger';
@@ -445,6 +446,14 @@ export function setupWebSocketServer(httpServer: HttpServer): WebSocketServer {
               socketService.emitToUser(pending.ownerUserId, 'friends:update');
               socketService.emitToUser(pending.requesterUserId, 'friends:update');
               socketService.emitToUser(pending.requesterUserId, 'friend_request:result', { result: 'accepted' });
+              activityService.record({
+                kind: 'friend_accept',
+                actorUserId: pending.ownerUserId,
+                actorName: claim?.userName || 'Owner',
+                targetUserId: pending.requesterUserId,
+                targetDeviceId: deviceId,
+                text: 'Friends',
+              });
               logger.info(
                 { deviceId, owner: pending.ownerUserId, friend: pending.requesterUserId },
                 'Friend added via device confirm'

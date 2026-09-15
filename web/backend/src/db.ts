@@ -228,6 +228,78 @@ db.exec(`
   );
 `);
 
+// Activity feed (poke, cam, friends, …)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS activity_events (
+    id             TEXT PRIMARY KEY,
+    kind           TEXT NOT NULL,
+    actorUserId    TEXT,
+    actorName      TEXT,
+    targetUserId   TEXT,
+    targetDeviceId TEXT,
+    text           TEXT,
+    createdAt      TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_activity_createdAt ON activity_events(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_activity_actor ON activity_events(actorUserId, createdAt);
+  CREATE INDEX IF NOT EXISTS idx_activity_target ON activity_events(targetUserId, createdAt);
+`);
+
+// Library tags (social discovery)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS library_tags (
+    libraryId TEXT NOT NULL,
+    tag       TEXT NOT NULL,
+    PRIMARY KEY (libraryId, tag),
+    FOREIGN KEY (libraryId) REFERENCES library(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_library_tags_tag ON library_tags(tag);
+`);
+
+// Scheduled pokes (cloud cron)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS scheduled_pokes (
+    id           TEXT PRIMARY KEY,
+    ownerUserId  TEXT NOT NULL,
+    targetType   TEXT NOT NULL CHECK (targetType IN ('device', 'user')),
+    targetId     TEXT NOT NULL,
+    text         TEXT NOT NULL,
+    cronType     TEXT NOT NULL CHECK (cronType IN ('daily', 'weekly')),
+    timeUtc      TEXT NOT NULL,
+    weekday      INTEGER,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    lastRunAt    TEXT,
+    createdAt    TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_scheduled_pokes_owner ON scheduled_pokes(ownerUserId);
+  CREATE INDEX IF NOT EXISTS idx_scheduled_pokes_enabled ON scheduled_pokes(enabled);
+`);
+
+// Water tracking
+db.exec(`
+  CREATE TABLE IF NOT EXISTS water_settings (
+    userId           TEXT PRIMARY KEY,
+    enabled          INTEGER NOT NULL DEFAULT 0,
+    intervalMinutes  INTEGER NOT NULL DEFAULT 90,
+    reminderMode     TEXT NOT NULL DEFAULT 'poke' CHECK (reminderMode IN ('poke', 'gif', 'both')),
+    pokeText         TEXT NOT NULL DEFAULT 'Drink water!',
+    libraryId        TEXT,
+    targetDeviceId   TEXT,
+    dailyGoalMl      INTEGER NOT NULL DEFAULT 2000,
+    glassMl          INTEGER NOT NULL DEFAULT 250,
+    lastDrinkAt      TEXT,
+    lastRemindAt     TEXT,
+    updatedAt        TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS water_logs (
+    id        TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL,
+    amountMl  INTEGER NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_water_logs_user ON water_logs(userId, createdAt);
+`);
+
 // ---------------------------------------------------------------------------
 //  Session store backed by better-sqlite3
 // ---------------------------------------------------------------------------

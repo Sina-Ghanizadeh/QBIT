@@ -13,6 +13,8 @@ import adminApp from './adminApp';
 import * as deviceService from './services/device.service';
 import * as socketService from './services/socket.service';
 import { startTelegramBot } from './services/telegram.bot';
+import { startScheduleWorker } from './services/schedule.service';
+import { startWaterWorker } from './services/water.service';
 import db from './db';
 import logger from './logger';
 
@@ -42,6 +44,8 @@ socketService.setupSocketIo(httpServer, sessionMiddleware);
 httpServer.listen(PORT, () => {
   logger.info({ port: PORT }, 'QBIT backend listening');
   startTelegramBot();
+  startScheduleWorker();
+  startWaterWorker();
 });
 
 adminHttpServer.listen(ADMIN_PORT, ADMIN_HOST, () => {

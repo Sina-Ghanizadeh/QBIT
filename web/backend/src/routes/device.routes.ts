@@ -13,6 +13,7 @@ import * as socialService from '../services/social.service';
 import * as userService from '../services/user.service';
 import * as socketService from '../services/socket.service';
 import { ensurePublicUserId, getUserIdFromPublicId } from '../services/publicUserId.service';
+import * as activityService from '../services/activity.service';
 import logger from '../logger';
 import type { AppUser } from '../types';
 
@@ -72,6 +73,14 @@ router.post('/poke', requireNotBanned, validate(pokeSchema), (req, res) => {
   device.ws.send(JSON.stringify(pokePayload));
   const io = socketService.getIo();
   if (io) io.emit('poke:highlight', { deviceToken: targetId });
+  activityService.record({
+    kind: 'poke_device',
+    actorUserId: user.id,
+    actorName: user.displayName || 'Anonymous',
+    targetUserId: claim?.userId ?? null,
+    targetDeviceId: device.id,
+    text: String(text).substring(0, 25),
+  });
   logger.info({ sender: user.displayName, target: device.name }, 'Poke sent');
   res.json({ ok: true });
 });
@@ -117,6 +126,13 @@ router.post('/poke/user', requireNotBanned, validate(pokeUserSchema), (req, res)
   }
   io.emit('poke:highlight', { publicUserId: targetPublicUserId });
 
+  activityService.record({
+    kind: 'poke_user',
+    actorUserId: sender.id,
+    actorName: sender.displayName || 'Anonymous',
+    targetUserId,
+    text: textStr,
+  });
   logger.info({ sender: sender.displayName, targetUserId }, 'User poke sent');
   res.json({ ok: true });
 });
