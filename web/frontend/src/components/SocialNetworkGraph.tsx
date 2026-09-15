@@ -130,7 +130,7 @@ export default function SocialNetworkGraph({
         nodes: {
           shape: 'dot',
           size: 22,
-          font: { color: '#ffffff', size: 13, face: 'Inter, sans-serif', multi: 'html' },
+          font: { color: '#ffffff', size: 13, face: 'Manrope, sans-serif', multi: 'html' },
           borderWidth: 2,
         },
         edges: {

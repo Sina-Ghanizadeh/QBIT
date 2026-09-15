@@ -116,7 +116,7 @@ export default function NetworkGraph({
         nodes: {
           shape: 'dot',
           size: 22,
-          font: { color: '#ffffff', size: 13, face: 'Inter, sans-serif', multi: 'html' },
+          font: { color: '#ffffff', size: 13, face: 'Manrope, sans-serif', multi: 'html' },
           borderWidth: 2,
           shadow: { enabled: true, size: 6, color: 'rgba(0,0,0,0.3)' },
           color: {

@@ -187,8 +187,10 @@ export default function DashboardPage({
   return (
     <div className="page-scroll dashboard-page">
       <header className="page-header">
-        <h1>Dashboard</h1>
-        <p className="page-sub">Welcome, {user.displayName}</p>
+        <h1>
+          <span className="brand-mark">Q</span>BIT Home
+        </h1>
+        <p className="page-sub">Welcome back, {user.displayName}. Your devices, routines, and network pulse live here.</p>
       </header>
 
       {error && <div className="page-error">{error}</div>}
