@@ -132,13 +132,16 @@ export default function NetworkGraph({
           smooth: { enabled: true, type: 'continuous', roundness: 0.5 },
         },
         physics: {
+          enabled: true,
           barnesHut: {
-            gravitationalConstant: -3000,
-            centralGravity: 0.3,
+            gravitationalConstant: -2400,
+            centralGravity: 0.12,
             springLength: 130,
-            springConstant: 0.04,
+            springConstant: 0.035,
+            damping: 0.55,
+            avoidOverlap: 0.15,
           },
-          stabilization: { iterations: 100 },
+          stabilization: { enabled: true, iterations: 120, fit: true },
         },
         interaction: {
           hover: true,
@@ -148,6 +151,13 @@ export default function NetworkGraph({
         },
       }
     );
+
+    const freeze = () => {
+      networkRef.current?.setOptions({ physics: { enabled: false } });
+    };
+    networkRef.current.on('stabilizationIterationsDone', freeze);
+    networkRef.current.on('stabilized', freeze);
+    networkRef.current.on('dragEnd', freeze);
 
     // Click handler -- open poke dialog for device nodes or user poke for user nodes (self not clickable)
     networkRef.current.on('click', (params: { nodes: string[] }) => {
@@ -175,6 +185,7 @@ export default function NetworkGraph({
     const nodes = nodesRef.current;
     const edges = edgesRef.current;
     const now = Date.now();
+    let structureChanged = false;
 
     const currentIds = (nodes.getIds() as string[]).filter((id) => id !== HUB_ID);
     const deviceIds = new Set(devices.map((d) => d.id));
@@ -186,6 +197,7 @@ export default function NetworkGraph({
       const stillPresent = isDevice ? deviceIds.has(id) : userIds.has(id);
       if (!stillPresent) {
         nodes.remove(id);
+        structureChanged = true;
         const toRemove = edges.get({
           filter: (e: Record<string, unknown>) => e.to === id,
         });
@@ -224,10 +236,16 @@ export default function NetworkGraph({
       const edgeLength = 300 - ratio * 180;
       if (nodes.get(d.id)) {
         nodes.update(nodeConfig);
-        edges.update({ id: `edge-${d.id}`, length: edgeLength });
+        // Keep edge length stable after first layout — constant length changes caused endless jiggling
+        const existingEdge = edges.get(`edge-${d.id}`) as { length?: number } | null;
+        if (!existingEdge) {
+          edges.add({ id: `edge-${d.id}`, from: HUB_ID, to: d.id, length: edgeLength });
+          structureChanged = true;
+        }
       } else {
         nodes.add(nodeConfig);
         edges.add({ id: `edge-${d.id}`, from: HUB_ID, to: d.id, length: edgeLength });
+        structureChanged = true;
       }
     });
 
@@ -261,10 +279,10 @@ export default function NetworkGraph({
       }
       if (nodes.get(id)) {
         nodes.update(nodeConfig);
-        edges.update({ id: `edge-${id}`, length: userEdgeLength });
       } else {
         nodes.add(nodeConfig);
         edges.add({ id: `edge-${id}`, from: HUB_ID, to: id, length: userEdgeLength });
+        structureChanged = true;
       }
     });
 
@@ -277,9 +295,7 @@ export default function NetworkGraph({
       const [pa, pb] = a < b ? [a, b] : [b, a];
       const eid = `edge-friend-${pa}-${pb}`;
       friendEdgeIds.add(eid);
-      if (edges.get(eid)) {
-        edges.update({ id: eid, color: { inherit: 'both' as const }, length: EDGE_FRIEND_LENGTH });
-      } else {
+      if (!edges.get(eid)) {
         edges.add({
           id: eid,
           from: fromId,
@@ -287,6 +303,7 @@ export default function NetworkGraph({
           color: { inherit: 'both' as const },
           length: EDGE_FRIEND_LENGTH,
         });
+        structureChanged = true;
       }
     });
 
@@ -300,19 +317,7 @@ export default function NetworkGraph({
       d2uEdgeIds.add(edgeId);
       const isMyClaim = d.claimedBy.publicUserId === currentUserId;
       const len = isMyClaim ? EDGE_FRIEND_LENGTH : EDGE_OTHER_LENGTH;
-      if (edges.get(edgeId)) {
-        if (isMyClaim) {
-          edges.update({
-            id: edgeId,
-            from: ownerNodeId,
-            to: d.id,
-            color: { inherit: 'both' as const },
-            length: len,
-          });
-        } else {
-          edges.update({ id: edgeId, from: d.id, to: ownerNodeId, color: { inherit: 'both' as const }, length: len });
-        }
-      } else {
+      if (!edges.get(edgeId)) {
         if (isMyClaim) {
           edges.add({
             id: edgeId,
@@ -324,6 +329,7 @@ export default function NetworkGraph({
         } else {
           edges.add({ id: edgeId, from: d.id, to: ownerNodeId, color: { inherit: 'both' as const }, length: len });
         }
+        structureChanged = true;
       }
       if (isMyClaim && friendIds.length > 0) {
         friendIds.forEach((friendId) => {
@@ -331,9 +337,7 @@ export default function NetworkGraph({
           if (!userIds.has(friendNodeId)) return;
           const friendEdgeId = `edge-d2u-${d.id}-friend-${friendId}`;
           d2uEdgeIds.add(friendEdgeId);
-          if (edges.get(friendEdgeId)) {
-            edges.update({ id: friendEdgeId, color: { inherit: 'both' as const }, length: EDGE_FRIEND_LENGTH });
-          } else {
+          if (!edges.get(friendEdgeId)) {
             edges.add({
               id: friendEdgeId,
               from: d.id,
@@ -341,6 +345,7 @@ export default function NetworkGraph({
               color: { inherit: 'both' as const },
               length: EDGE_FRIEND_LENGTH,
             });
+            structureChanged = true;
           }
         });
       }
@@ -351,12 +356,30 @@ export default function NetworkGraph({
       if ((eid.startsWith('edge-d2u-') && !d2uEdgeIds.has(eid)) ||
           (eid.startsWith('edge-friend-') && !friendEdgeIds.has(eid))) {
         edges.remove(eid);
+        structureChanged = true;
       }
     });
     // Re-apply poke glow if active (sync above overwrites node options)
     if (glowStateRef.current) {
       const { nodeId, shadow } = glowStateRef.current;
       if (nodes.get(nodeId)) nodes.update({ id: nodeId, shadow });
+    }
+    if (structureChanged && networkRef.current) {
+      networkRef.current.setOptions({
+        physics: {
+          enabled: true,
+          barnesHut: {
+            gravitationalConstant: -2400,
+            centralGravity: 0.12,
+            springLength: 130,
+            springConstant: 0.035,
+            damping: 0.55,
+            avoidOverlap: 0.15,
+          },
+          stabilization: { enabled: true, iterations: 80, fit: false },
+        },
+      });
+      networkRef.current.stabilize(80);
     }
   }, [devices, onlineUsers, currentUserId, friendIds, friendPairs]);
 

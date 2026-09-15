@@ -74,6 +74,8 @@ export default function SocialNetworkGraph({
   const currentUserIdRef = useRef(currentUserId);
   const activityByUserRef = useRef(activityByUser);
 
+  const physicsBusyRef = useRef(false);
+
   useEffect(() => {
     usersRef.current = users;
   }, [users]);
@@ -89,6 +91,34 @@ export default function SocialNetworkGraph({
   useEffect(() => {
     activityByUserRef.current = activityByUser;
   }, [activityByUser]);
+
+  const freezePhysics = useCallback(() => {
+    const net = networkRef.current;
+    if (!net) return;
+    net.setOptions({ physics: { enabled: false } });
+    physicsBusyRef.current = false;
+  }, []);
+
+  const settlePhysics = useCallback(() => {
+    const net = networkRef.current;
+    if (!net || physicsBusyRef.current) return;
+    physicsBusyRef.current = true;
+    net.setOptions({
+      physics: {
+        enabled: true,
+        barnesHut: {
+          gravitationalConstant: -2200,
+          centralGravity: 0.08,
+          springLength: 140,
+          springConstant: 0.03,
+          damping: 0.55,
+          avoidOverlap: 0.2,
+        },
+        stabilization: { enabled: true, iterations: 100, fit: false },
+      },
+    });
+    net.stabilize(100);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -111,21 +141,35 @@ export default function SocialNetworkGraph({
         physics: {
           enabled: true,
           barnesHut: {
-            gravitationalConstant: -2800,
-            centralGravity: 0.15,
-            springLength: 120,
-            springConstant: 0.04,
+            gravitationalConstant: -2200,
+            centralGravity: 0.08,
+            springLength: 140,
+            springConstant: 0.03,
+            damping: 0.55,
+            avoidOverlap: 0.2,
           },
-          stabilization: { iterations: 80 },
+          stabilization: { enabled: true, iterations: 120, fit: true },
         },
         interaction: {
           hover: true,
           tooltipDelay: 120,
           zoomView: true,
           dragView: true,
+          dragNodes: true,
         },
       }
     );
+
+    networkRef.current.on('stabilizationIterationsDone', () => {
+      freezePhysics();
+    });
+    networkRef.current.on('stabilized', () => {
+      freezePhysics();
+    });
+    // User drag: keep physics off so nodes don't rebound into a dance
+    networkRef.current.on('dragEnd', () => {
+      freezePhysics();
+    });
 
     networkRef.current.on('click', (params) => {
       if (!params.nodes.length) return;
@@ -155,7 +199,7 @@ export default function SocialNetworkGraph({
       nodesRef.current.clear();
       edgesRef.current.clear();
     };
-  }, []);
+  }, [freezePhysics]);
 
   const syncGraph = useCallback(() => {
     const nodes = nodesRef.current;
@@ -163,6 +207,7 @@ export default function SocialNetworkGraph({
     const showLabel = labelsVisibleRef.current;
     const wantNodes = new Set<string>();
     const wantEdges = new Set<string>();
+    let structureChanged = false;
 
     for (const u of usersRef.current) {
       const uid = USER_PREFIX + u.publicUserId;
@@ -185,8 +230,22 @@ export default function SocialNetworkGraph({
           lastAct ? `\n${lastAct}` : ''
         }`,
       };
-      if (nodes.get(uid)) nodes.update(userNode);
-      else nodes.add(userNode);
+      const prev = nodes.get(uid) as Record<string, unknown> | null;
+      if (!prev) {
+        nodes.add(userNode);
+        structureChanged = true;
+      } else if (
+        prev.label !== userNode.label ||
+        prev.size !== userNode.size ||
+        prev.borderWidth !== userNode.borderWidth ||
+        prev.shape !== userNode.shape ||
+        prev.image !== userNode.image ||
+        prev.title !== userNode.title ||
+        JSON.stringify(prev.color) !== JSON.stringify(userNode.color)
+      ) {
+        // Cosmetic / status update only — keep current x/y so layout does not jump
+        nodes.update(userNode);
+      }
 
       for (const d of u.devices) {
         const did = DEVICE_PREFIX + d.deviceId;
@@ -206,8 +265,17 @@ export default function SocialNetworkGraph({
           font: { color: '#fff', size: 11 },
           title: `${d.name}${d.online ? ' · online' : ' · offline'}`,
         };
-        if (nodes.get(did)) nodes.update(deviceNode);
-        else nodes.add(deviceNode);
+        const prevDev = nodes.get(did) as Record<string, unknown> | null;
+        if (!prevDev) {
+          nodes.add(deviceNode);
+          structureChanged = true;
+        } else if (
+          prevDev.label !== deviceNode.label ||
+          prevDev.title !== deviceNode.title ||
+          JSON.stringify(prevDev.color) !== JSON.stringify(deviceNode.color)
+        ) {
+          nodes.update(deviceNode);
+        }
 
         const edge = {
           id: eid,
@@ -216,18 +284,28 @@ export default function SocialNetworkGraph({
           length: 90,
           color: { color: '#555' },
         };
-        if (edges.get(eid)) edges.update(edge);
-        else edges.add(edge);
+        if (!edges.get(eid)) {
+          edges.add(edge);
+          structureChanged = true;
+        }
       }
     }
 
     for (const n of nodes.getIds()) {
-      if (!wantNodes.has(String(n))) nodes.remove(n);
+      if (!wantNodes.has(String(n))) {
+        nodes.remove(n);
+        structureChanged = true;
+      }
     }
     for (const e of edges.getIds()) {
-      if (!wantEdges.has(String(e))) edges.remove(e);
+      if (!wantEdges.has(String(e))) {
+        edges.remove(e);
+        structureChanged = true;
+      }
     }
-  }, []);
+
+    if (structureChanged) settlePhysics();
+  }, [settlePhysics]);
 
   useEffect(() => {
     usersRef.current = users;
