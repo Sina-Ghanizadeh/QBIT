@@ -183,6 +183,10 @@ export default function DashboardPage({
 
   const telegramLinked = bots.some((b) => b.platform === 'telegram' && b.linked);
   const pendingGroups = myGroups.filter((g) => g.memberStatus === 'pending');
+  const onlineCount = devices.filter((d) => d.online).length;
+  const needsDevice = devices.length === 0;
+  const needsGlobal = !isGlobal;
+  const showGuide = needsDevice || needsGlobal;
 
   return (
     <div className="page-scroll dashboard-page">
@@ -190,24 +194,66 @@ export default function DashboardPage({
         <h1>
           <span className="brand-mark">Q</span>BIT Home
         </h1>
-        <p className="page-sub">Welcome back, {user.displayName}. Your devices, routines, and network pulse live here.</p>
+        <p className="page-sub">Hi {user.displayName} — manage devices, then poke friends on the Network.</p>
       </header>
 
       {error && <div className="page-error">{error}</div>}
 
-      <ActivityFeed apiUrl={API_URL} liveEvent={liveActivity} />
+      {showGuide && (
+        <section className="dash-section flow-guide">
+          <h2>Start here</h2>
+          <ol className="flow-steps">
+            <li className={needsDevice ? 'active' : 'done'}>
+              <div>
+                <strong>Claim a QBIT</strong>
+                <p className="page-sub">
+                  {needsDevice
+                    ? 'Turn the device on, open Devices, and claim it when it appears.'
+                    : `${devices.length} device(s) linked · ${onlineCount} online`}
+                </p>
+              </div>
+              {needsDevice && (
+                <button type="button" className="btn-primary" onClick={onOpenDevices}>
+                  Go to Devices
+                </button>
+              )}
+            </li>
+            <li className={!needsDevice && needsGlobal ? 'active' : needsGlobal ? '' : 'done'}>
+              <div>
+                <strong>Show up on Global Network</strong>
+                <p className="page-sub">Optional — so other global users can find and poke you.</p>
+              </div>
+              {!needsDevice && needsGlobal && (
+                <button type="button" className="btn-secondary" disabled={busy} onClick={() => void toggleGlobal()}>
+                  Enable Global
+                </button>
+              )}
+            </li>
+            <li className={!needsDevice ? 'active' : ''}>
+              <div>
+                <strong>Open Network & poke</strong>
+                <p className="page-sub">Tap a device or friend node, or use Studio for quick messages.</p>
+              </div>
+              {!needsDevice && (
+                <button type="button" className="btn-primary" onClick={onOpenNetwork}>
+                  Open Network
+                </button>
+              )}
+            </li>
+          </ol>
+        </section>
+      )}
 
-      <WaterPanel />
-
-      <RoutinesPanel />
-
-      <section className="dash-section">
-        <h2>Global network</h2>
-        <p className="page-sub">Appear on the global Network graph for other global users.</p>
-        <label className="dash-toggle">
-          <input type="checkbox" checked={isGlobal} disabled={busy} onChange={toggleGlobal} />
-          <span>I am a global user</span>
-        </label>
+      <section className="dash-section dash-actions flow-quick">
+        <button type="button" className="btn-primary" onClick={onOpenNetwork}>
+          Network
+        </button>
+        <button type="button" className="btn-primary" onClick={onOpenDevices}>
+          Devices
+        </button>
+        <button type="button" className="btn-secondary" onClick={onOpenGroups}>
+          Groups
+        </button>
       </section>
 
       <section className="dash-section">
@@ -218,16 +264,20 @@ export default function DashboardPage({
           </button>
         </div>
         {devices.length === 0 ? (
-          <p className="page-sub">No claimed devices yet. Add one from the Devices page.</p>
+          <p className="page-sub">
+            None yet.{' '}
+            <button type="button" className="btn-text" onClick={onOpenDevices}>
+              Claim your first QBIT
+            </button>
+          </p>
         ) : (
           <ul className="dash-list">
             {devices.map((d) => (
               <li key={d.deviceId} className="dash-list-item">
                 <div>
                   <strong>{d.name}</strong>
-                  <span className="page-sub">
-                    {' '}
-                    · {d.online ? 'online' : 'offline'}
+                  <span className={`status-pill ${d.online ? 'on' : 'off'}`}>
+                    {d.online ? 'online' : 'offline'}
                   </span>
                 </div>
                 <label className="dash-toggle compact">
@@ -236,7 +286,7 @@ export default function DashboardPage({
                     checked={!!d.showInGlobal}
                     onChange={(e) => toggleDeviceGlobal(d.deviceId, e.target.checked)}
                   />
-                  <span>Show in global</span>
+                  <span>Visible on Global</span>
                 </label>
               </li>
             ))}
@@ -245,14 +295,29 @@ export default function DashboardPage({
       </section>
 
       <section className="dash-section">
+        <h2>Appear on Global</h2>
+        <p className="page-sub">When on, you show up in Network → Global for other global users.</p>
+        <label className="dash-toggle">
+          <input type="checkbox" checked={isGlobal} disabled={busy} onChange={toggleGlobal} />
+          <span>{isGlobal ? 'Global is on' : 'Global is off'}</span>
+        </label>
+      </section>
+
+      <ActivityFeed apiUrl={API_URL} liveEvent={liveActivity} />
+
+      <WaterPanel />
+
+      <RoutinesPanel />
+
+      <section className="dash-section">
         <div className="dash-section-head">
           <h2>Groups</h2>
           <button type="button" className="btn-secondary" onClick={onOpenGroups}>
-            Manage
+            Browse
           </button>
         </div>
         {myGroups.length === 0 ? (
-          <p className="page-sub">You have not joined any groups.</p>
+          <p className="page-sub">Join a group to see a private Network graph of members.</p>
         ) : (
           <ul className="dash-list">
             {myGroups.slice(0, 5).map((g) => (
@@ -273,85 +338,77 @@ export default function DashboardPage({
         )}
       </section>
 
-      <section className="dash-section">
-        <h2>Animation permissions</h2>
-        <p className="page-sub">Allow a user or group to set animations on your device(s).</p>
-        <div className="dash-form-row">
-          <select value={grantType} onChange={(e) => setGrantType(e.target.value as 'user' | 'group')}>
-            <option value="user">User (public ID)</option>
-            <option value="group">Group ID</option>
-          </select>
-          <input
-            placeholder={grantType === 'user' ? 'Public user ID' : 'Group ID'}
-            value={grantTarget}
-            onChange={(e) => setGrantTarget(e.target.value)}
-          />
-          <select value={grantDeviceId} onChange={(e) => setGrantDeviceId(e.target.value)}>
-            <option value="">All my devices</option>
-            {devices.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="btn-primary" disabled={busy} onClick={addGrant}>
-            Grant
-          </button>
-        </div>
-        {grants.length > 0 && (
-          <ul className="dash-list">
-            {grants.map((g) => (
-              <li key={g.id} className="dash-list-item">
-                <span>
-                  {g.granteeType}:{g.granteeId.slice(0, 12)}…
-                  {g.deviceId ? ` @ ${g.deviceId.slice(0, 8)}` : ' (all)'}
-                </span>
-                <button type="button" className="btn-text" onClick={() => revokeGrant(g.id)}>
-                  Revoke
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="dash-section">
-        <h2>Telegram</h2>
-        {telegramLinked ? (
+      <details className="dash-section flow-advanced">
+        <summary>
+          <strong>Advanced</strong>
+          <span className="page-sub"> Animation permissions & Telegram bot</span>
+        </summary>
+        <div className="flow-advanced-body">
+          <h3>Animation permissions</h3>
+          <p className="page-sub">Let a friend or group set GIFs on your device.</p>
           <div className="dash-form-row">
-            <span className="page-sub">Linked</span>
-            <button type="button" className="btn-secondary" onClick={unlinkTelegram}>
-              Unlink
+            <select value={grantType} onChange={(e) => setGrantType(e.target.value as 'user' | 'group')}>
+              <option value="user">User (public ID)</option>
+              <option value="group">Group ID</option>
+            </select>
+            <input
+              placeholder={grantType === 'user' ? 'Public user ID' : 'Group ID'}
+              value={grantTarget}
+              onChange={(e) => setGrantTarget(e.target.value)}
+            />
+            <select value={grantDeviceId} onChange={(e) => setGrantDeviceId(e.target.value)}>
+              <option value="">All my devices</option>
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn-primary" disabled={busy} onClick={addGrant}>
+              Grant
             </button>
           </div>
-        ) : (
-          <>
-            <button type="button" className="btn-primary" disabled={busy} onClick={startTelegramLink}>
-              Generate link code
-            </button>
-            {linkCode && (
-              <p className="dash-code">
-                Send to the bot: <code>/start {linkCode}</code>
-                {linkExpires && (
-                  <span className="page-sub"> (expires {new Date(linkExpires).toLocaleTimeString()})</span>
-                )}
-              </p>
-            )}
-          </>
-        )}
-      </section>
+          {grants.length > 0 && (
+            <ul className="dash-list">
+              {grants.map((g) => (
+                <li key={g.id} className="dash-list-item">
+                  <span>
+                    {g.granteeType}:{g.granteeId.slice(0, 12)}…
+                    {g.deviceId ? ` @ ${g.deviceId.slice(0, 8)}` : ' (all)'}
+                  </span>
+                  <button type="button" className="btn-text" onClick={() => revokeGrant(g.id)}>
+                    Revoke
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
 
-      <section className="dash-section dash-actions">
-        <button type="button" className="btn-primary" onClick={onOpenDevices}>
-          Devices
-        </button>
-        <button type="button" className="btn-primary" onClick={onOpenNetwork}>
-          Open Network
-        </button>
-        <button type="button" className="btn-secondary" onClick={onOpenGroups}>
-          Browse Groups
-        </button>
-      </section>
+          <h3>Telegram</h3>
+          {telegramLinked ? (
+            <div className="dash-form-row">
+              <span className="page-sub">Linked</span>
+              <button type="button" className="btn-secondary" onClick={unlinkTelegram}>
+                Unlink
+              </button>
+            </div>
+          ) : (
+            <>
+              <button type="button" className="btn-secondary" disabled={busy} onClick={startTelegramLink}>
+                Generate link code
+              </button>
+              {linkCode && (
+                <p className="dash-code">
+                  Send to the bot: <code>/start {linkCode}</code>
+                  {linkExpires && (
+                    <span className="page-sub"> (expires {new Date(linkExpires).toLocaleTimeString()})</span>
+                  )}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </details>
     </div>
   );
 }

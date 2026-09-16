@@ -37,13 +37,13 @@ const GOOGLE_ICON = (
   </svg>
 );
 
-const TABS: { id: Page; label: string; requiresAuth?: boolean }[] = [
-  { id: 'dashboard', label: 'Home', requiresAuth: true },
-  { id: 'devices', label: 'Devices', requiresAuth: true },
-  { id: 'network', label: 'Network' },
-  { id: 'groups', label: 'Groups', requiresAuth: true },
-  { id: 'flash', label: 'Flash' },
-  { id: 'library', label: 'Library' },
+const TABS: { id: Page; label: string; hint: string; requiresAuth?: boolean }[] = [
+  { id: 'dashboard', label: 'Home', hint: 'Your hub: devices, water, routines', requiresAuth: true },
+  { id: 'devices', label: 'Devices', hint: 'Claim and control your QBIT', requiresAuth: true },
+  { id: 'network', label: 'Network', hint: 'See people & poke devices' },
+  { id: 'groups', label: 'Groups', hint: 'Private friend circles', requiresAuth: true },
+  { id: 'flash', label: 'Flash', hint: 'Install firmware on a new device' },
+  { id: 'library', label: 'Library', hint: 'Browse and share OLED GIFs' },
 ];
 
 export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Props) {
@@ -180,10 +180,15 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
 
   return (
     <nav className="navbar">
-      <div className="navbar-brand">
+      <button
+        type="button"
+        className="navbar-brand"
+        title="QBIT Home"
+        onClick={() => setPage(user ? 'dashboard' : 'network')}
+      >
         <span className="brand-q">Q</span>
         <span className="brand-bit">BIT</span>
-      </div>
+      </button>
 
       <div className="nav-tabs" ref={tabsRef}>
         <span
@@ -202,6 +207,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
               tabRefs.current[index] = el;
             }}
             className={`nav-tab${page === tab.id ? ' active' : ''}`}
+            title={tab.hint}
             onClick={() => setPage(tab.id)}
           >
             {tab.label}

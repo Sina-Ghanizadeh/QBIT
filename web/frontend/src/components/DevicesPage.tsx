@@ -77,7 +77,7 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
       <header className="page-header">
         <h1>Devices</h1>
         <p className="page-sub">
-          Add and manage your QBIT devices here. Set library GIFs and stream webcam through the cloud.
+          1) Power on your QBIT · 2) Claim it below when it appears · 3) Stream cam or set a GIF from here.
         </p>
       </header>
 

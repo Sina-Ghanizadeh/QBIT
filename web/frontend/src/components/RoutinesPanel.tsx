@@ -147,7 +147,7 @@ export default function RoutinesPanel() {
   return (
     <section className="dash-section">
       <h2>Routines</h2>
-      <p className="page-sub">Schedule daily or weekly pokes to your devices or friends (times shown in local timezone).</p>
+      <p className="page-sub">Auto-poke your device or a friend on a daily/weekly schedule (times in your local timezone).</p>
       {error && <div className="page-error">{error}</div>}
       <div className="dash-form-row routines-form">
         <select value={targetType} onChange={(e) => setTargetType(e.target.value as "device" | "user")}>

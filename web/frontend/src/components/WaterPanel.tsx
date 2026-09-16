@@ -132,7 +132,7 @@ export default function WaterPanel() {
         </button>
       </div>
       <p className="page-sub">
-        Track glasses on the dashboard. If you go too long without water, QBIT can poke you or play a reminder GIF.
+        Track drinks here. Too long without water? Your QBIT can poke you or play a reminder GIF.
       </p>
       {error && <div className="page-error">{error}</div>}
 

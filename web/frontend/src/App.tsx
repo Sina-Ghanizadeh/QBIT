@@ -73,7 +73,7 @@ export default function App() {
     seq: number;
   } | null>(null);
 
-  const [networkMode, setNetworkMode] = useState<NetworkMode>('global');
+  const [networkMode, setNetworkMode] = useState<NetworkMode>(() => 'legacy');
   const [networkUsers, setNetworkUsers] = useState<NetworkUserNode[]>([]);
   const networkUsersRef = useRef<NetworkUserNode[]>([]);
   const [myGroups, setMyGroups] = useState<GroupInfo[]>([]);
@@ -124,7 +124,10 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : null))
       .then((u) => {
         setUser(u);
-        if (u && !window.location.pathname.startsWith('/library/')) setPage('dashboard');
+        if (u && !window.location.pathname.startsWith('/library/')) {
+          setPage('dashboard');
+          setNetworkMode('global');
+        }
       })
       .catch(() => setUser(null));
   }, []);
@@ -512,7 +515,16 @@ export default function App() {
             setLibraryTagFilter(null);
           }
         }}
-        onUserChange={setUser}
+        onUserChange={(u) => {
+          setUser(u);
+          if (u) {
+            setPage('dashboard');
+            setNetworkMode('global');
+          } else {
+            setPage('network');
+            setNetworkMode('legacy');
+          }
+        }}
       />
       <main className="main">
         {page === 'dashboard' && user && (
@@ -537,6 +549,7 @@ export default function App() {
                   className={networkMode === 'global' ? 'active' : ''}
                   onClick={() => setNetworkMode('global')}
                   disabled={!user}
+                  title="People who enabled Global"
                 >
                   Global
                 </button>
@@ -545,6 +558,7 @@ export default function App() {
                   className={networkMode === 'group' ? 'active' : ''}
                   onClick={() => setNetworkMode('group')}
                   disabled={!user}
+                  title="Members of a group you joined"
                 >
                   Group
                 </button>
@@ -552,6 +566,7 @@ export default function App() {
                   type="button"
                   className={networkMode === 'legacy' ? 'active' : ''}
                   onClick={() => setNetworkMode('legacy')}
+                  title="Whoever is online right now"
                 >
                   Live
                 </button>
@@ -571,30 +586,56 @@ export default function App() {
                 </select>
               )}
             </div>
+            <p className="network-flow-hint">
+              {networkMode === 'global' &&
+                'Global: friends & devices that opted into the public graph. Tap a node to poke.'}
+              {networkMode === 'group' &&
+                'Group: only approved members of the selected group. Pick a group above.'}
+              {networkMode === 'legacy' &&
+                'Live: devices and users online right now. Works even before you log in.'}
+            </p>
             {networkError && <div className="network-mode-error">{networkError}</div>}
             {!user && networkMode !== 'legacy' ? (
               <div className="empty-state">
-                <p>Log in to view Global or Group networks</p>
-                <p className="empty-sub">Or switch to Live to see online devices.</p>
+                <p>Log in to browse Global or Group</p>
+                <p className="empty-sub">Use Login in the top bar — or switch to Live to see who is online now.</p>
+                <button type="button" className="btn-primary" onClick={() => setNetworkMode('legacy')}>
+                  Open Live view
+                </button>
               </div>
             ) : !hasNetworkNodes ? (
               <div className="empty-state">
                 <p>
                   {networkMode === 'global'
-                    ? 'No global users yet'
+                    ? 'Nobody on Global yet'
                     : networkMode === 'group'
                       ? selectedGroupId
-                        ? 'No members in this group'
-                        : 'Select a group'
-                      : 'No QBIT devices online'}
+                        ? 'This group has no members on the graph'
+                        : 'Choose a group to explore'
+                      : 'No devices online nearby'}
                 </p>
                 <p className="empty-sub">
                   {networkMode === 'global'
-                    ? 'Enable Global in your Dashboard and show devices on the global network.'
+                    ? 'On Home, turn on Global and mark your device as Visible on Global.'
                     : networkMode === 'group'
-                      ? 'Join or create a group from the Groups page.'
-                      : 'Devices will appear here when they connect.'}
+                      ? 'Join or create a group from the Groups tab.'
+                      : 'Power on a QBIT on the same network — it will show up here.'}
                 </p>
+                {user && networkMode === 'global' && (
+                  <button type="button" className="btn-secondary" onClick={() => setPage('dashboard')}>
+                    Go to Home settings
+                  </button>
+                )}
+                {user && networkMode === 'group' && (
+                  <button type="button" className="btn-secondary" onClick={() => setPage('groups')}>
+                    Open Groups
+                  </button>
+                )}
+                {networkMode === 'legacy' && user && (
+                  <button type="button" className="btn-secondary" onClick={() => setPage('devices')}>
+                    Open Devices
+                  </button>
+                )}
               </div>
             ) : networkMode === 'legacy' ? (
               <NetworkGraph

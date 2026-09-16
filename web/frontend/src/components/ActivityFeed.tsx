@@ -71,7 +71,7 @@ export default function ActivityFeed({ apiUrl, liveEvent }: Props) {
   return (
     <section className="dash-section">
       <h2>Activity</h2>
-      <p className="page-sub">Pokes, webcam, and friend events across your network.</p>
+      <p className="page-sub">Recent pokes, webcam, and friend events.</p>
       {events.length === 0 ? (
         <p className="page-sub">No recent activity yet. Send a poke to get started.</p>
       ) : (
