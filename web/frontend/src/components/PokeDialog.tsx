@@ -21,6 +21,8 @@ interface Props {
   publicFriends?: boolean;
   onPublicFriendsChange?: (value: boolean) => void;
   onRemoveFriend?: (publicUserId: string) => Promise<void>;
+  /** Navigate to Devices for own-device management */
+  onManageDevices?: () => void;
 }
 
 export interface BitmapPayload {
@@ -108,19 +110,11 @@ export default function PokeDialog({
   device,
   user,
   onPoke,
-  onUnclaim,
   onAddFriend,
   onClose,
   isLoggedIn,
   friendIds = [],
-  friendDisplayNames = {},
-  friendAvatars = {},
-  onlineUsers = [],
-  onlyFriendsCanPoke = false,
-  onOnlyFriendsCanPokeChange,
-  publicFriends = true,
-  onPublicFriendsChange,
-  onRemoveFriend,
+  onManageDevices,
 }: Props) {
   const isMyDevice = !!user && !!device.claimedBy?.publicUserId && device.claimedBy.publicUserId === user.publicUserId;
   const isOthersClaimedDevice = !!device.claimedBy && !isMyDevice;
@@ -223,79 +217,21 @@ export default function PokeDialog({
             </button>
 
             {isMyDevice && (
-              <>
-                {onUnclaim && (
+              <div className="poke-own-device">
+                <p className="poke-devices-hint">This is your QBIT. Cam, GIFs, and claim live on Devices.</p>
+                {onManageDevices && (
                   <button
-                    className="btn-claim-link unclaim"
-                    onClick={() => onUnclaim(device)}
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => {
+                      onClose();
+                      onManageDevices();
+                    }}
                   >
-                    Unclaim this device
+                    Manage on Devices
                   </button>
                 )}
-                <p className="poke-devices-hint">
-                  Manage devices from the Devices page.
-                </p>
-                {onOnlyFriendsCanPokeChange != null && (
-                  <label className="poke-setting-switch">
-                    <span className="poke-setting-switch-label">Only friends can poke this QBIT</span>
-                    <input
-                      type="checkbox"
-                      className="poke-setting-switch-input"
-                      checked={onlyFriendsCanPoke}
-                      onChange={(e) => onOnlyFriendsCanPokeChange(e.target.checked)}
-                    />
-                    <span className="poke-setting-switch-slider" />
-                  </label>
-                )}
-                {onPublicFriendsChange != null && (
-                  <label className="poke-setting-switch">
-                    <span className="poke-setting-switch-label">Public friends on graph</span>
-                    <input
-                      type="checkbox"
-                      className="poke-setting-switch-input"
-                      checked={publicFriends}
-                      onChange={(e) => onPublicFriendsChange(e.target.checked)}
-                    />
-                    <span className="poke-setting-switch-slider" />
-                  </label>
-                )}
-                {friendIds.length > 0 && (
-                  <div className="poke-friends-section">
-                    <div className="poke-friends-title">Friends</div>
-                    <ul className="poke-friends-list">
-                      {friendIds.map((publicUserId) => {
-                        const online = onlineUsers.find((u) => u.publicUserId === publicUserId);
-                        const displayName = friendDisplayNames[publicUserId] ?? online?.displayName ?? 'Friend';
-                        const avatarUrl = friendAvatars[publicUserId] || online?.avatar;
-                        return (
-                          <li key={publicUserId} className="poke-friends-item">
-                            <div className="poke-friends-pill">
-                              {avatarUrl ? (
-                                <img src={avatarUrl} alt="" className="poke-friends-avatar" referrerPolicy="no-referrer" />
-                              ) : (
-                                <span className="poke-friends-avatar poke-friends-avatar-placeholder" aria-hidden />
-                              )}
-                              <span className="poke-friends-name" title={displayName}>{displayName}</span>
-                            </div>
-                            {onRemoveFriend && (
-                              <button
-                                type="button"
-                                className="poke-friends-remove"
-                                onClick={async () => {
-                                  if (!confirm(`Remove ${displayName} from friends?`)) return;
-                                  await onRemoveFriend(publicUserId);
-                                }}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </>
+              </div>
             )}
             {showAddFriend && (
               <button

@@ -37,6 +37,7 @@ export default function WaterPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [pouring, setPouring] = useState(false);
 
   const refresh = useCallback(() => {
     fetch(`${API_URL}/api/me/water`, { credentials: "include" })
@@ -67,6 +68,7 @@ export default function WaterPanel() {
   const drink = async () => {
     setBusy(true);
     setError(null);
+    setPouring(true);
     try {
       const res = await fetch(`${API_URL}/api/me/water/drink`, {
         method: "POST",
@@ -82,6 +84,7 @@ export default function WaterPanel() {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
       setBusy(false);
+      window.setTimeout(() => setPouring(false), 700);
     }
   };
 
@@ -116,6 +119,8 @@ export default function WaterPanel() {
 
   const s = status.settings;
   const pct = Math.min(100, Math.round((status.todayMl / Math.max(1, s.dailyGoalMl)) * 100));
+  const goalGlasses = Math.max(1, Math.ceil(s.dailyGoalMl / Math.max(1, s.glassMl)));
+  const filledGlasses = Math.min(goalGlasses, status.todayGlasses);
   const since =
     status.minutesSinceLastDrink == null
       ? "No drinks logged yet"
@@ -136,23 +141,54 @@ export default function WaterPanel() {
       </p>
       {error && <div className="page-error">{error}</div>}
 
-      <div className="water-stats">
-        <div className="water-stat-main">
-          <strong>{status.todayMl} ml</strong>
-          <span className="page-sub">
-            / {s.dailyGoalMl} ml · {status.todayGlasses} glass{status.todayGlasses === 1 ? "" : "es"}
-          </span>
+      <div className="water-visual">
+        <div
+          className={`water-glass${pouring ? " water-glass-pouring" : ""}${pct >= 100 ? " water-glass-full" : ""}`}
+          role="img"
+          aria-label={`${pct}% of daily water goal`}
+        >
+          <div className="water-glass-shine" aria-hidden />
+          <div className="water-glass-body">
+            <div className="water-fill" style={{ height: `${pct}%` }}>
+              <div className="water-wave water-wave-a" aria-hidden />
+              <div className="water-wave water-wave-b" aria-hidden />
+            </div>
+          </div>
+          <div className="water-glass-rim" aria-hidden />
+          <div className="water-glass-label">
+            <strong>{pct}%</strong>
+            <span>{status.todayMl} / {s.dailyGoalMl} ml</span>
+          </div>
         </div>
-        <div className="water-progress" aria-hidden>
-          <div className="water-progress-fill" style={{ width: `${pct}%` }} />
+
+        <div className="water-visual-meta">
+          <div className="water-stat-main">
+            <strong>{status.todayGlasses}</strong>
+            <span className="page-sub">
+              glass{status.todayGlasses === 1 ? "" : "es"} today · {s.glassMl} ml each
+            </span>
+          </div>
+
+          <div className="water-drops" aria-hidden>
+            {Array.from({ length: Math.min(goalGlasses, 12) }, (_, i) => (
+              <span
+                key={i}
+                className={`water-drop${i < filledGlasses ? " filled" : ""}${status.overdue && i === filledGlasses ? " overdue" : ""}`}
+              />
+            ))}
+            {goalGlasses > 12 && (
+              <span className="water-drop-more">+{goalGlasses - 12}</span>
+            )}
+          </div>
+
+          <p className={`page-sub${status.overdue ? " water-overdue-text" : ""}`}>
+            {since}
+            {s.enabled && status.nextRemindInMinutes != null && !status.overdue
+              ? ` · next nudge in ~${status.nextRemindInMinutes}m`
+              : ""}
+            {status.overdue ? " · overdue — reminder pending" : ""}
+          </p>
         </div>
-        <p className={`page-sub${status.overdue ? " water-overdue-text" : ""}`}>
-          {since}
-          {s.enabled && status.nextRemindInMinutes != null && !status.overdue
-            ? ` · next nudge in ~${status.nextRemindInMinutes}m`
-            : ""}
-          {status.overdue ? " · overdue — reminder pending" : ""}
-        </p>
       </div>
 
       <div className="btn-row">

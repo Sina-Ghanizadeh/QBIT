@@ -6,6 +6,7 @@ import SocialNetworkGraph from './components/SocialNetworkGraph';
 import DashboardPage from './components/DashboardPage';
 import DevicesPage from './components/DevicesPage';
 import GroupsPage from './components/GroupsPage';
+import ProfilePage from './components/ProfilePage';
 import PokeDialog from './components/PokeDialog';
 import type { BitmapPayload } from './components/PokeDialog';
 import UserPokeDialog from './components/UserPokeDialog';
@@ -21,7 +22,7 @@ import type { Device, User, OnlineUser, NetworkUserNode, GroupInfo } from './typ
 import { isTTSSupported, speakPokeMessage } from './utils/tts';
 import { getPokeHistory, addPokeHistory, clearPokeHistory, type PokeHistoryEntry } from './utils/pokeHistory';
 
-export type Page = 'dashboard' | 'devices' | 'network' | 'groups' | 'flash' | 'library';
+export type Page = 'dashboard' | 'profile' | 'devices' | 'network' | 'groups' | 'flash' | 'library';
 export type NetworkMode = 'legacy' | 'global' | 'group';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -201,7 +202,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user && (page === 'dashboard' || page === 'groups' || page === 'devices')) {
+    if (!user && (page === 'dashboard' || page === 'profile' || page === 'groups' || page === 'devices')) {
       setPage('network');
     }
   }, [user, page]);
@@ -531,10 +532,12 @@ export default function App() {
           <DashboardPage
             user={user}
             onOpenNetwork={() => setPage('network')}
-            onOpenGroups={() => setPage('groups')}
             onOpenDevices={() => setPage('devices')}
-            liveActivity={liveActivity}
+            onOpenProfile={() => setPage('profile')}
           />
+        )}
+        {page === 'profile' && user && (
+          <ProfilePage user={user} liveActivity={liveActivity} />
         )}
         {page === 'devices' && user && (
           <DevicesPage user={user} liveDevices={devices} socket={socket} />
@@ -549,7 +552,7 @@ export default function App() {
                   className={networkMode === 'global' ? 'active' : ''}
                   onClick={() => setNetworkMode('global')}
                   disabled={!user}
-                  title="People who enabled Global"
+                  title="Global: friends & devices that opted into the public graph. Tap a node to poke."
                 >
                   Global
                 </button>
@@ -558,7 +561,7 @@ export default function App() {
                   className={networkMode === 'group' ? 'active' : ''}
                   onClick={() => setNetworkMode('group')}
                   disabled={!user}
-                  title="Members of a group you joined"
+                  title="Group: only approved members of the selected group. Pick a group above."
                 >
                   Group
                 </button>
@@ -566,7 +569,7 @@ export default function App() {
                   type="button"
                   className={networkMode === 'legacy' ? 'active' : ''}
                   onClick={() => setNetworkMode('legacy')}
-                  title="Whoever is online right now"
+                  title="Live: devices and users online right now. Works even before you log in."
                 >
                   Live
                 </button>
@@ -586,14 +589,16 @@ export default function App() {
                 </select>
               )}
             </div>
-            <p className="network-flow-hint">
-              {networkMode === 'global' &&
-                'Global: friends & devices that opted into the public graph. Tap a node to poke.'}
-              {networkMode === 'group' &&
-                'Group: only approved members of the selected group. Pick a group above.'}
-              {networkMode === 'legacy' &&
-                'Live: devices and users online right now. Works even before you log in.'}
-            </p>
+            {!hasNetworkNodes && (
+              <p className="network-flow-hint">
+                {networkMode === 'global' &&
+                  'Global: friends & devices that opted into the public graph. Tap a node to poke.'}
+                {networkMode === 'group' &&
+                  'Group: only approved members of the selected group. Pick a group above.'}
+                {networkMode === 'legacy' &&
+                  'Live: devices and users online right now. Works even before you log in.'}
+              </p>
+            )}
             {networkError && <div className="network-mode-error">{networkError}</div>}
             {!user && networkMode !== 'legacy' ? (
               <div className="empty-state">
@@ -708,11 +713,13 @@ export default function App() {
                     }
                     networkBarTouchStartRef.current = null;
                   }}
-                  aria-label="Network status. Tap to open Poke history"
+                  aria-label="Open poke history. Swipe up or tap"
                 >
                   <span className="network-device-count-text">
                     {networkMode === 'legacy' ? (
                       <>
+                        Poke history
+                        {(devices.length > 0 || onlineUsers.length > 0) && ' · '}
                         {devices.length > 0 && (
                           <span>
                             {devices.length} device{devices.length !== 1 ? 's' : ''}
@@ -724,12 +731,14 @@ export default function App() {
                             {onlineUsers.length} user{onlineUsers.length !== 1 ? 's' : ''}
                           </span>
                         )}
-                        {' online'}
+                        {(devices.length > 0 || onlineUsers.length > 0) && ' online'}
+                        {' · swipe up'}
                       </>
                     ) : (
                       <span>
-                        {networkUsers.length} user{networkUsers.length !== 1 ? 's' : ''} ·{' '}
-                        {deviceCountScoped} device{deviceCountScoped !== 1 ? 's' : ''}
+                        Poke history · {networkUsers.length} user
+                        {networkUsers.length !== 1 ? 's' : ''} · {deviceCountScoped} device
+                        {deviceCountScoped !== 1 ? 's' : ''} · swipe up
                       </span>
                     )}
                   </span>
@@ -818,6 +827,7 @@ export default function App() {
               // ignore
             }
           }}
+          onManageDevices={() => setPage('devices')}
           onRemoveFriend={async (publicUserId) => {
             const res = await fetch(`${API_URL}/api/friends/${encodeURIComponent(publicUserId)}`, {
               method: 'DELETE',
@@ -880,29 +890,31 @@ export default function App() {
           onSubmitted={() => {}}
         />
       )}
-      {page === 'network' && user && (
-        <button
-          type="button"
-          className={`studio-floating-btn${hasNetworkNodes ? ' studio-floating-btn-stacked' : ''}`}
-          onClick={() => setShowPokeStudio(true)}
-          title="Poke Studio"
-          aria-label="Open Poke Studio"
-        >
-          Studio
-        </button>
-      )}
       {page === 'network' && (
-        <button
-          type="button"
-          className={`report-floating-btn${hasNetworkNodes ? ' report-floating-btn-stacked' : ''}`}
-          onClick={() => setShowReport(true)}
-          title="Report user"
-          aria-label="Report user"
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path fill="currentColor" d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" />
-          </svg>
-        </button>
+        <div className={`network-fab-cluster${hasNetworkNodes ? ' network-fab-cluster-raised' : ''}`}>
+          {user && (
+            <button
+              type="button"
+              className="studio-floating-btn"
+              onClick={() => setShowPokeStudio(true)}
+              title="Poke Studio"
+              aria-label="Open Poke Studio"
+            >
+              Studio
+            </button>
+          )}
+          <button
+            type="button"
+            className="report-floating-btn"
+            onClick={() => setShowReport(true)}
+            title="Report user"
+            aria-label="Report user"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path fill="currentColor" d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" />
+            </svg>
+          </button>
+        </div>
       )}
       {showPokeStudio && user && (
         <PokeStudio

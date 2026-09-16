@@ -38,7 +38,8 @@ const GOOGLE_ICON = (
 );
 
 const TABS: { id: Page; label: string; hint: string; requiresAuth?: boolean }[] = [
-  { id: 'dashboard', label: 'Home', hint: 'Your hub: devices, water, routines', requiresAuth: true },
+  { id: 'dashboard', label: 'Home', hint: 'Dashboard: water, routines, devices', requiresAuth: true },
+  { id: 'profile', label: 'Profile', hint: 'Activity, account & advanced', requiresAuth: true },
   { id: 'devices', label: 'Devices', hint: 'Claim and control your QBIT', requiresAuth: true },
   { id: 'network', label: 'Network', hint: 'See people & poke devices' },
   { id: 'groups', label: 'Groups', hint: 'Private friend circles', requiresAuth: true },
@@ -190,43 +191,52 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
         <span className="brand-bit">BIT</span>
       </button>
 
-      <div className="nav-tabs" ref={tabsRef}>
-        <span
-          className="nav-tab-indicator"
-          aria-hidden
-          style={{
-            width: `${indicatorStyle.width}px`,
-            transform: `translateX(${indicatorStyle.left}px)`,
-            opacity: indicatorStyle.visible ? 1 : 0,
-          }}
-        />
-        {TABS.filter((tab) => !tab.requiresAuth || user).map((tab, index) => (
-          <button
-            key={tab.id}
-            ref={(el) => {
-              tabRefs.current[index] = el;
+      <div className="nav-tabs-scroll">
+        <div className="nav-tabs" ref={tabsRef}>
+          <span
+            className="nav-tab-indicator"
+            aria-hidden
+            style={{
+              width: `${indicatorStyle.width}px`,
+              transform: `translateX(${indicatorStyle.left}px)`,
+              opacity: indicatorStyle.visible ? 1 : 0,
             }}
-            className={`nav-tab${page === tab.id ? ' active' : ''}`}
-            title={tab.hint}
-            onClick={() => setPage(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+          />
+          {TABS.filter((tab) => !tab.requiresAuth || user).map((tab, index) => (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                tabRefs.current[index] = el;
+              }}
+              className={`nav-tab${page === tab.id ? ' active' : ''}`}
+              title={tab.hint}
+              onClick={() => setPage(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="navbar-user">
         {user ? (
           <>
-            {user.avatar && (
-              <img
-                className="navbar-avatar"
-                src={user.avatar}
-                alt={user.displayName}
-                referrerPolicy="no-referrer"
-              />
-            )}
-            <span className="navbar-name">{user.displayName}</span>
+            <button
+              type="button"
+              className="navbar-profile-btn"
+              title="Open Profile"
+              onClick={() => setPage('profile')}
+            >
+              {user.avatar && (
+                <img
+                  className="navbar-avatar"
+                  src={user.avatar}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              <span className="navbar-name">{user.displayName}</span>
+            </button>
             <a className="btn btn-logout" href={`${apiUrl}/auth/logout`}>
               <svg className="logout-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
