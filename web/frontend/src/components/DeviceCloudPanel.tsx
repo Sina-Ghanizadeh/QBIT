@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { NetworkDeviceNode } from '../types';
+import { useI18n } from '../i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const W = 128;
@@ -34,6 +35,7 @@ function packThreshold(luma: Uint8Array, cutoff: number): Uint8Array {
 }
 
 export default function DeviceCloudPanel({ device, socket, onError }: Props) {
+  const { t } = useI18n();
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryId, setLibraryId] = useState('');
   const [settingAnim, setSettingAnim] = useState(false);
@@ -224,7 +226,7 @@ export default function DeviceCloudPanel({ device, socket, onError }: Props) {
       return;
     }
     try {
-      setCamMsg('Requesting camera…');
+      setCamMsg(t('device.requestingCam'));
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 128 }, height: { ideal: 64 }, facingMode: 'user' },
         audio: false,
@@ -269,10 +271,10 @@ export default function DeviceCloudPanel({ device, socket, onError }: Props) {
           value={libraryId}
           onChange={(e) => setLibraryId(e.target.value)}
           disabled={!device.online || library.length === 0}
-          aria-label="Library animation"
+          aria-label={t('device.libraryAnim')}
         >
           {library.length === 0 ? (
-            <option value="">No library items</option>
+            <option value="">{t('profile.noLibrary')}</option>
           ) : (
             library.map((item) => (
               <option key={item.id} value={item.id}>
@@ -287,7 +289,7 @@ export default function DeviceCloudPanel({ device, socket, onError }: Props) {
           disabled={!device.online || !libraryId || settingAnim}
           onClick={() => void setAnimation()}
         >
-          {settingAnim ? 'Sending…' : 'Set GIF on device'}
+          {settingAnim ? t('poke.sending') : t('device.setGif')}
         </button>
       </div>
 
@@ -312,11 +314,11 @@ export default function DeviceCloudPanel({ device, socket, onError }: Props) {
               disabled={!device.online || !socket}
               onClick={() => void startCam()}
             >
-              Webcam to OLED
+              {t('device.cam')}
             </button>
           ) : (
             <button type="button" className="btn-text" onClick={() => stopCamInternal(true)}>
-              Stop webcam
+              {t('device.stopCam')}
             </button>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useI18n } from '../i18n';
 
 export interface ActivityEventDto {
   id: string;
@@ -51,6 +52,7 @@ function timeAgo(iso: string): string {
 }
 
 export default function ActivityFeed({ apiUrl, liveEvent }: Props) {
+  const { t } = useI18n();
   const [events, setEvents] = useState<ActivityEventDto[]>([]);
 
   useEffect(() => {
@@ -70,10 +72,10 @@ export default function ActivityFeed({ apiUrl, liveEvent }: Props) {
 
   return (
     <section className="dash-section">
-      <h2>Activity</h2>
-      <p className="page-sub">Recent pokes, webcam, and friend events.</p>
+      <h2>{t('activity.title')}</h2>
+      <p className="page-sub">{t('activity.sub')}</p>
       {events.length === 0 ? (
-        <p className="page-sub">No recent activity yet. Send a poke to get started.</p>
+        <p className="page-sub">{t('activity.empty')}</p>
       ) : (
         <ul className="activity-list">
           {events.map((ev) => (

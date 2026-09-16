@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Device } from '../types';
+import { useI18n } from '../i18n';
 
 interface Props {
   device: Device;
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function AddFriendDialog({ device, apiUrl, onClose }: Props) {
+  const { t } = useI18n();
   const [deviceIdFull, setDeviceIdFull] = useState('');
   const [status, setStatus] = useState<'idle' | 'pending' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -35,11 +37,11 @@ export default function AddFriendDialog({ device, apiUrl, onClose }: Props) {
         setStatus('pending');
       } else {
         setStatus('error');
-        setErrorMsg(data.error || 'Friend request failed');
+        setErrorMsg(data.error || t('friend.failed'));
       }
     } catch {
       setStatus('error');
-      setErrorMsg('Network error');
+      setErrorMsg(t('common.networkError'));
     }
   };
 
@@ -47,7 +49,7 @@ export default function AddFriendDialog({ device, apiUrl, onClose }: Props) {
     <div className="poke-overlay" onClick={onClose}>
       <div className="poke-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="poke-header">
-          <span className="poke-title">Add friend: {device.name}</span>
+          <span className="poke-title">{t('friend.title')}: {device.name}</span>
           <button className="poke-close" onClick={onClose}>
             &times;
           </button>
@@ -61,8 +63,8 @@ export default function AddFriendDialog({ device, apiUrl, onClose }: Props) {
                 <path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1" />
               </svg>
             </div>
-            <p>Waiting for owner to confirm on device.</p>
-            <p className="claim-pending-hint">Long-press the QBIT button to confirm.</p>
+            <p>{t('friend.waiting')}</p>
+            <p className="claim-pending-hint">{t('claim.longPress')}</p>
           </div>
         ) : (
           <>

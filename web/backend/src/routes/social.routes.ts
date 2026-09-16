@@ -202,6 +202,13 @@ router.get('/me/animation-grants', (req, res) => {
   res.json({ grants });
 });
 
+// GET /api/me/animation-targets — devices others granted you access to animate
+router.get('/me/animation-targets', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.json({ targets: animationService.listAnimationTargetsForUser(user.id) });
+});
+
 // POST /api/me/animation-grants
 router.post('/me/animation-grants', requireNotBanned, validate(createAnimationGrantSchema), (req, res) => {
   const user = requireUser(req, res);

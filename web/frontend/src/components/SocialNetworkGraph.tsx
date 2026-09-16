@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Network } from 'vis-network/standalone';
 import { DataSet } from 'vis-data/standalone';
 import type { NetworkUserNode, Device, OnlineUser } from '../types';
+import { useI18n } from '../i18n';
 
 const USER_PREFIX = 'user:';
 const DEVICE_PREFIX = 'device:';
@@ -17,7 +18,7 @@ interface Props {
   activityByUser?: Record<string, string>;
 }
 
-const GLOW_COLOR_DEVICE = '#d32f2f';
+const GLOW_COLOR_DEVICE = '#e53935';
 const GLOW_COLOR_USER = '#1976d2';
 const GLOW_RAMP_MS = 120;
 const GLOW_FADE_MS = 1000;
@@ -62,6 +63,7 @@ export default function SocialNetworkGraph({
   onSelectUser,
   activityByUser = {},
 }: Props) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   const nodesRef = useRef(new DataSet<Record<string, unknown>>());
@@ -221,9 +223,9 @@ export default function SocialNetworkGraph({
         size: u.online ? 32 : 26,
         borderWidth: u.online ? 3 : 2,
         color: {
-          border: u.online ? '#4caf50' : '#555',
-          background: u.online ? '#1b5e20' : '#2a2a2a',
-          highlight: { border: '#81c784', background: '#2e7d32' },
+          border: u.online ? '#4fc3f7' : '#555',
+          background: u.online ? '#01579b' : '#2a2a2a',
+          highlight: { border: '#81d4fa', background: '#0277bd' },
         },
         font: { color: '#fff', size: 13 },
         title: `${u.displayName}${u.isGlobal ? ' · global' : ''}${u.online ? ' · online' : ' · offline'}${
@@ -258,7 +260,7 @@ export default function SocialNetworkGraph({
           shape: 'dot',
           size: 16,
           color: {
-            border: d.online ? '#d32f2f' : '#555',
+            border: d.online ? '#e53935' : '#555',
             background: d.online ? '#b71c1c' : '#333',
             highlight: { border: '#ff4d4d', background: '#c62828' },
           },
@@ -402,7 +404,7 @@ export default function SocialNetworkGraph({
         <button
           type="button"
           className="network-fab"
-          title="Fit"
+          title={t('graph.fit')}
           onClick={() => networkRef.current?.fit({ animation: true })}
         >
           ⤢
@@ -410,7 +412,7 @@ export default function SocialNetworkGraph({
         <button
           type="button"
           className="network-fab"
-          title="Toggle labels"
+          title={t('graph.toggleLabels')}
           onClick={() => setLabelsVisible((v) => !v)}
         >
           {labelsVisible ? 'Aa' : '··'}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Device } from '../types';
+import { useI18n } from '../i18n';
 
 interface Props {
   device: Device;
@@ -22,6 +23,7 @@ export default function ClaimDialog({
   socket,
   knownDevice = false,
 }: Props) {
+  const { t } = useI18n();
   const [deviceIdFull, setDeviceIdFull] = useState(knownDevice ? device.id : '');
   const [status, setStatus] = useState<'idle' | 'pending' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -34,17 +36,17 @@ export default function ClaimDialog({
         onClose();
       } else if (data.result === 'timeout') {
         setStatus('error');
-        setErrorMsg('Timed out waiting for confirmation on device');
+        setErrorMsg(t('claim.waiting'));
       } else if (data.result === 'rejected') {
         setStatus('error');
-        setErrorMsg('Claim was declined on device');
+        setErrorMsg(t('claim.declined'));
       }
     };
     socket.on('claim:result', handler);
     return () => {
       socket.off('claim:result', handler);
     };
-  }, [socket, onClaimed, onClose]);
+  }, [socket, onClaimed, onClose, t]);
 
   const handleSubmit = async () => {
     const id = knownDevice ? device.id : deviceIdFull.trim();
@@ -70,11 +72,11 @@ export default function ClaimDialog({
         setStatus('pending');
       } else {
         setStatus('error');
-        setErrorMsg(data.error || 'Claim failed');
+        setErrorMsg(data.error || t('claim.failed'));
       }
     } catch {
       setStatus('error');
-      setErrorMsg('Network error');
+      setErrorMsg(t('common.networkError'));
     }
   };
 
@@ -84,7 +86,7 @@ export default function ClaimDialog({
     <div className="poke-overlay" onClick={onClose}>
       <div className="poke-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="poke-header">
-          <span className="poke-title">Add device: {device.name}</span>
+          <span className="poke-title">{t('claim.title')}: {device.name}</span>
           <button className="poke-close" onClick={onClose}>
             &times;
           </button>
@@ -98,8 +100,8 @@ export default function ClaimDialog({
                 <path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1" />
               </svg>
             </div>
-            <p>Waiting for confirmation on device.</p>
-            <p className="claim-pending-hint">Long-press the QBIT button to confirm.</p>
+            <p>{t('claim.waiting')}</p>
+            <p className="claim-pending-hint">{t('claim.longPress')}</p>
           </div>
         ) : (
           <>
@@ -116,7 +118,7 @@ export default function ClaimDialog({
                 <input
                   className="poke-input"
                   type="text"
-                  placeholder="Device ID"
+                  placeholder={t('claim.deviceId')}
                   maxLength={64}
                   value={deviceIdFull}
                   onChange={(e) => setDeviceIdFull(e.target.value.trim())}

@@ -19,6 +19,7 @@ import PokeStudio from './components/PokeStudio';
 import ReportDialog from './components/ReportDialog';
 import type { ActivityEventDto } from './components/ActivityFeed';
 import type { Device, User, OnlineUser, NetworkUserNode, GroupInfo } from './types';
+import { useI18n } from './i18n';
 import { isTTSSupported, speakPokeMessage } from './utils/tts';
 import { getPokeHistory, addPokeHistory, clearPokeHistory, type PokeHistoryEntry } from './utils/pokeHistory';
 
@@ -35,6 +36,7 @@ interface PokeNotification {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [page, setPage] = useState<Page>('network');
   const [devices, setDevices] = useState<Device[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
@@ -552,26 +554,26 @@ export default function App() {
                   className={networkMode === 'global' ? 'active' : ''}
                   onClick={() => setNetworkMode('global')}
                   disabled={!user}
-                  title="Global: friends & devices that opted into the public graph. Tap a node to poke."
+                  title={t('network.globalTitle')}
                 >
-                  Global
+                  {t('network.global')}
                 </button>
                 <button
                   type="button"
                   className={networkMode === 'group' ? 'active' : ''}
                   onClick={() => setNetworkMode('group')}
                   disabled={!user}
-                  title="Group: only approved members of the selected group. Pick a group above."
+                  title={t('network.groupTitle')}
                 >
-                  Group
+                  {t('network.group')}
                 </button>
                 <button
                   type="button"
                   className={networkMode === 'legacy' ? 'active' : ''}
                   onClick={() => setNetworkMode('legacy')}
-                  title="Live: devices and users online right now. Works even before you log in."
+                  title={t('network.liveTitle')}
                 >
-                  Live
+                  {t('network.live')}
                 </button>
               </div>
               {networkMode === 'group' && user && (
@@ -580,7 +582,7 @@ export default function App() {
                   value={selectedGroupId}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
                 >
-                  <option value="">Select group…</option>
+                  <option value="">{t('network.selectGroup')}</option>
                   {myGroups.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.name}
@@ -591,54 +593,49 @@ export default function App() {
             </div>
             {!hasNetworkNodes && (
               <p className="network-flow-hint">
-                {networkMode === 'global' &&
-                  'Global: friends & devices that opted into the public graph. Tap a node to poke.'}
-                {networkMode === 'group' &&
-                  'Group: only approved members of the selected group. Pick a group above.'}
-                {networkMode === 'legacy' &&
-                  'Live: devices and users online right now. Works even before you log in.'}
+                {networkMode === 'global' && t('network.globalTitle')}
+                {networkMode === 'group' && t('network.groupTitle')}
+                {networkMode === 'legacy' && t('network.liveTitle')}
               </p>
             )}
             {networkError && <div className="network-mode-error">{networkError}</div>}
             {!user && networkMode !== 'legacy' ? (
               <div className="empty-state">
-                <p>Log in to browse Global or Group</p>
-                <p className="empty-sub">Use Login in the top bar — or switch to Live to see who is online now.</p>
+                <p>{t('nav.login')}</p>
+                <p className="empty-sub">{t('network.liveTitle')}</p>
                 <button type="button" className="btn-primary" onClick={() => setNetworkMode('legacy')}>
-                  Open Live view
+                  {t('network.openLive')}
                 </button>
               </div>
             ) : !hasNetworkNodes ? (
               <div className="empty-state">
                 <p>
                   {networkMode === 'global'
-                    ? 'Nobody on Global yet'
+                    ? t('network.emptyGlobal')
                     : networkMode === 'group'
-                      ? selectedGroupId
-                        ? 'This group has no members on the graph'
-                        : 'Choose a group to explore'
-                      : 'No devices online nearby'}
+                      ? t('network.emptyGroup')
+                      : t('network.emptyLive')}
                 </p>
                 <p className="empty-sub">
                   {networkMode === 'global'
-                    ? 'On Home, turn on Global and mark your device as Visible on Global.'
+                    ? t('network.globalTitle')
                     : networkMode === 'group'
-                      ? 'Join or create a group from the Groups tab.'
-                      : 'Power on a QBIT on the same network — it will show up here.'}
+                      ? t('network.groupTitle')
+                      : t('network.liveTitle')}
                 </p>
                 {user && networkMode === 'global' && (
                   <button type="button" className="btn-secondary" onClick={() => setPage('dashboard')}>
-                    Go to Home settings
+                    {t('network.goHome')}
                   </button>
                 )}
                 {user && networkMode === 'group' && (
                   <button type="button" className="btn-secondary" onClick={() => setPage('groups')}>
-                    Open Groups
+                    {t('network.goGroups')}
                   </button>
                 )}
                 {networkMode === 'legacy' && user && (
                   <button type="button" className="btn-secondary" onClick={() => setPage('devices')}>
-                    Open Devices
+                    {t('network.goDevices')}
                   </button>
                 )}
               </div>
@@ -713,32 +710,43 @@ export default function App() {
                     }
                     networkBarTouchStartRef.current = null;
                   }}
-                  aria-label="Open poke history. Swipe up or tap"
+                  aria-label={`${t('network.pokeHistory')}. ${t('network.swipeUp')}`}
                 >
                   <span className="network-device-count-text">
                     {networkMode === 'legacy' ? (
                       <>
-                        Poke history
+                        {t('network.pokeHistory')}
                         {(devices.length > 0 || onlineUsers.length > 0) && ' · '}
                         {devices.length > 0 && (
                           <span>
-                            {devices.length} device{devices.length !== 1 ? 's' : ''}
+                            {t(devices.length === 1 ? 'network.devices' : 'network.devices_plural', {
+                              n: devices.length,
+                            })}
                           </span>
                         )}
                         {devices.length > 0 && onlineUsers.length > 0 && ' · '}
                         {onlineUsers.length > 0 && (
                           <span>
-                            {onlineUsers.length} user{onlineUsers.length !== 1 ? 's' : ''}
+                            {t(onlineUsers.length === 1 ? 'network.users' : 'network.users_plural', {
+                              n: onlineUsers.length,
+                            })}
                           </span>
                         )}
-                        {(devices.length > 0 || onlineUsers.length > 0) && ' online'}
-                        {' · swipe up'}
+                        {(devices.length > 0 || onlineUsers.length > 0) && ` ${t('network.online')}`}
+                        {' · '}
+                        {t('network.swipeUp')}
                       </>
                     ) : (
                       <span>
-                        Poke history · {networkUsers.length} user
-                        {networkUsers.length !== 1 ? 's' : ''} · {deviceCountScoped} device
-                        {deviceCountScoped !== 1 ? 's' : ''} · swipe up
+                        {t('network.pokeHistory')} ·{' '}
+                        {t(networkUsers.length === 1 ? 'network.users' : 'network.users_plural', {
+                          n: networkUsers.length,
+                        })}{' '}
+                        ·{' '}
+                        {t(deviceCountScoped === 1 ? 'network.devices' : 'network.devices_plural', {
+                          n: deviceCountScoped,
+                        })}{' '}
+                        · {t('network.swipeUp')}
                       </span>
                     )}
                   </span>
@@ -897,8 +905,8 @@ export default function App() {
               type="button"
               className="studio-floating-btn"
               onClick={() => setShowPokeStudio(true)}
-              title="Poke Studio"
-              aria-label="Open Poke Studio"
+              title={t('network.studio')}
+              aria-label={t('network.studio')}
             >
               Studio
             </button>
@@ -907,8 +915,8 @@ export default function App() {
             type="button"
             className="report-floating-btn"
             onClick={() => setShowReport(true)}
-            title="Report user"
-            aria-label="Report user"
+            title={t('network.report')}
+            aria-label={t('network.report')}
           >
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
               <path fill="currentColor" d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z" />
@@ -930,7 +938,7 @@ export default function App() {
             key={n.id}
             className={`poke-notification ${n.exiting ? 'poke-notification-exit' : 'poke-notification-enter'}`}
           >
-            <div className="poke-notification-from">Poke from {n.from}</div>
+            <div className="poke-notification-from">{t('poke.from', { name: n.from })}</div>
             <div className="poke-notification-text">{n.text}</div>
           </div>
         ))}

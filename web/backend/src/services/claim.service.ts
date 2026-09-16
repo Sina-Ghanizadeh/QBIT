@@ -7,6 +7,7 @@ import type { ClaimInfo } from '../types';
 
 const stmtGet = db.prepare('SELECT * FROM claims WHERE deviceId = ?');
 const stmtAll = db.prepare('SELECT * FROM claims');
+const stmtByUser = db.prepare('SELECT deviceId FROM claims WHERE userId = ?');
 const stmtInsert = db.prepare(
   'INSERT OR REPLACE INTO claims (deviceId, userId, userName, userAvatar, claimedAt, showInGlobal) VALUES (?, ?, ?, ?, ?, COALESCE((SELECT showInGlobal FROM claims WHERE deviceId = ?), 0))'
 );
@@ -17,6 +18,10 @@ export function getClaimByDevice(deviceId: string): ClaimInfo | null {
   const row = stmtGet.get(deviceId) as (ClaimInfo & { deviceId: string; showInGlobal?: number }) | undefined;
   if (!row) return null;
   return { userId: row.userId, userName: row.userName, userAvatar: row.userAvatar, claimedAt: row.claimedAt };
+}
+
+export function getDeviceIdsForUser(userId: string): string[] {
+  return (stmtByUser.all(userId) as { deviceId: string }[]).map((r) => r.deviceId);
 }
 
 export function getShowInGlobal(deviceId: string): boolean {

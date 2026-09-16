@@ -12,6 +12,7 @@ import * as libraryService from './library.service';
 import logger from '../logger';
 import * as activityService from './activity.service';
 import * as userService from './user.service';
+import { ensurePublicUserId } from './publicUserId.service';
 
 export type GranteeType = 'user' | 'group';
 
@@ -35,6 +36,16 @@ const stmtForDevice = db.prepare(`
   SELECT * FROM animation_grants
   WHERE ownerUserId = ? AND (deviceId IS NULL OR deviceId = ?)
 `);
+const stmtByUserGrantee = db.prepare(`
+  SELECT * FROM animation_grants
+  WHERE granteeType = 'user' AND granteeId = ?
+  ORDER BY createdAt DESC
+`);
+const stmtGroupGrants = db.prepare(`
+  SELECT * FROM animation_grants
+  WHERE granteeType = 'group'
+  ORDER BY createdAt DESC
+`);
 
 function newId(): string {
   return crypto.randomBytes(12).toString('hex');
@@ -42,6 +53,68 @@ function newId(): string {
 
 export function listGrantsForOwner(ownerUserId: string): AnimationGrant[] {
   return stmtByOwner.all(ownerUserId) as AnimationGrant[];
+}
+
+export interface AnimationTarget {
+  deviceId: string;
+  deviceName: string;
+  online: boolean;
+  ownerPublicUserId: string;
+  ownerDisplayName: string;
+  via: GranteeType;
+  groupId?: string;
+  grantId: string;
+}
+
+/** Devices the actor may set animation on via grants (not own devices). */
+export function listAnimationTargetsForUser(actorUserId: string): AnimationTarget[] {
+  const grants: AnimationGrant[] = [
+    ...(stmtByUserGrantee.all(actorUserId) as AnimationGrant[]),
+  ];
+  for (const g of stmtGroupGrants.all() as AnimationGrant[]) {
+    if (groupService.isApprovedMember(g.granteeId, actorUserId)) {
+      grants.push(g);
+    }
+  }
+
+  const byDevice = new Map<string, AnimationTarget>();
+
+  for (const g of grants) {
+    if (g.ownerUserId === actorUserId) continue;
+
+    const deviceIds = g.deviceId
+      ? [g.deviceId]
+      : claimService.getDeviceIdsForUser(g.ownerUserId);
+
+    const owner = userService.getUserById(g.ownerUserId);
+    const ownerPublic = ensurePublicUserId(g.ownerUserId);
+    const ownerDisplayName = owner?.displayName || 'Someone';
+
+    for (const deviceId of deviceIds) {
+      const claim = claimService.getClaimByDevice(deviceId);
+      if (!claim || claim.userId !== g.ownerUserId) continue;
+
+      const existing = byDevice.get(deviceId);
+      // Prefer direct user grants over group when both apply
+      if (existing && existing.via === 'user' && g.granteeType === 'group') continue;
+
+      byDevice.set(deviceId, {
+        deviceId,
+        deviceName: deviceService.getDeviceDisplayName(deviceId),
+        online: !!deviceService.getDevice(deviceId),
+        ownerPublicUserId: ownerPublic,
+        ownerDisplayName,
+        via: g.granteeType,
+        groupId: g.granteeType === 'group' ? g.granteeId : undefined,
+        grantId: g.id,
+      });
+    }
+  }
+
+  return Array.from(byDevice.values()).sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return a.deviceName.localeCompare(b.deviceName);
+  });
 }
 
 export function createGrant(input: {

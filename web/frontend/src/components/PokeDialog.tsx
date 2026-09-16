@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Device, User, OnlineUser } from '../types';
+import { useI18n } from '../i18n';
 
 interface Props {
   device: Device;
@@ -116,6 +117,7 @@ export default function PokeDialog({
   friendIds = [],
   onManageDevices,
 }: Props) {
+  const { t } = useI18n();
   const isMyDevice = !!user && !!device.claimedBy?.publicUserId && device.claimedBy.publicUserId === user.publicUserId;
   const isOthersClaimedDevice = !!device.claimedBy && !isMyDevice;
   const isFriendWithOwner = isOthersClaimedDevice && device.claimedBy?.publicUserId && friendIds.includes(device.claimedBy.publicUserId);
@@ -176,14 +178,14 @@ export default function PokeDialog({
         <div className="poke-dialog-body">
         {!isLoggedIn ? (
           <div className="poke-login-msg">
-            Login from the top-right to send a poke.
+            {t('poke.login')}
           </div>
         ) : (
           <>
             <input
               className="poke-input"
               type="text"
-              placeholder="Type a message..."
+              placeholder={t('poke.typeMessage')}
               maxLength={25}
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -213,12 +215,12 @@ export default function PokeDialog({
               onClick={() => send(text)}
               disabled={!text.trim() || sending}
             >
-              {sending ? 'Sending...' : 'Send Poke'}
+              {sending ? t('poke.sending') : t('poke.send')}
             </button>
 
             {isMyDevice && (
               <div className="poke-own-device">
-                <p className="poke-devices-hint">This is your QBIT. Cam, GIFs, and claim live on Devices.</p>
+                <p className="poke-devices-hint">{t('poke.ownHint')}</p>
                 {onManageDevices && (
                   <button
                     type="button"
@@ -228,7 +230,7 @@ export default function PokeDialog({
                       onManageDevices();
                     }}
                   >
-                    Manage on Devices
+                    {t('poke.manageDevices')}
                   </button>
                 )}
               </div>
@@ -238,7 +240,7 @@ export default function PokeDialog({
                 className="btn-claim-link"
                 onClick={() => onAddFriend(device)}
               >
-                Add friend
+                {t('poke.addFriend')}
               </button>
             )}
           </>

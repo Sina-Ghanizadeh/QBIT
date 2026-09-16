@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type { GroupInfo, User } from '../types';
+import { useI18n } from '../i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -15,6 +16,7 @@ interface JoinRequest {
 }
 
 export default function GroupsPage({ user }: Props) {
+  const { t } = useI18n();
   const [publicGroups, setPublicGroups] = useState<GroupInfo[]>([]);
   const [myGroups, setMyGroups] = useState<GroupInfo[]>([]);
   const [name, setName] = useState('');
@@ -143,7 +145,7 @@ export default function GroupsPage({ user }: Props) {
   };
 
   const removeGroup = async (groupId: string) => {
-    if (!confirm('Delete this group?')) return;
+    if (!confirm(t('groups.deleteConfirm'))) return;
     const res = await fetch(`${API_URL}/api/groups/${groupId}`, {
       method: 'DELETE',
       credentials: 'include',
@@ -167,25 +169,25 @@ export default function GroupsPage({ user }: Props) {
   return (
     <div className="page-scroll groups-page">
       <header className="page-header">
-        <h1>Groups</h1>
-        <p className="page-sub">Public groups, private invite codes, and your memberships.</p>
+        <h1>{t('groups.title')}</h1>
+        <p className="page-sub">{t('groups.sub')}</p>
       </header>
 
       {error && <div className="page-error">{error}</div>}
 
       <section className="dash-section">
-        <h2>Create group</h2>
+        <h2>{t('groups.create')}</h2>
         <form className="dash-form" onSubmit={createGroup}>
           <input
             required
             maxLength={64}
-            placeholder="Name"
+            placeholder={t('groups.namePh')}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <input
             maxLength={280}
-            placeholder="Description (optional)"
+            placeholder={t('groups.descPh')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -193,33 +195,33 @@ export default function GroupsPage({ user }: Props) {
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
           >
-            <option value="public">Public</option>
-            <option value="private">Private</option>
+            <option value="public">{t('groups.publicOpt')}</option>
+            <option value="private">{t('groups.privateOpt')}</option>
           </select>
           <button type="submit" className="btn-primary" disabled={busy}>
-            Create
+            {t('groups.create')}
           </button>
         </form>
       </section>
 
       <section className="dash-section">
-        <h2>Join with invite code</h2>
+        <h2>{t('groups.joinCode')}</h2>
         <form className="dash-form-row" onSubmit={joinByCode}>
           <input
-            placeholder="Invite code"
+            placeholder={t('groups.invitePlaceholder')}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
           />
           <button type="submit" className="btn-primary" disabled={busy || !inviteCode.trim()}>
-            Request join
+            {t('groups.requestJoin')}
           </button>
         </form>
       </section>
 
       <section className="dash-section">
-        <h2>My groups</h2>
+        <h2>{t('groups.mine')}</h2>
         {myGroups.length === 0 ? (
-          <p className="page-sub">None yet.</p>
+          <p className="page-sub">{t('groups.empty')}</p>
         ) : (
           <ul className="dash-list">
             {myGroups.map((g) => (
@@ -241,17 +243,17 @@ export default function GroupsPage({ user }: Props) {
                           className="btn-secondary"
                           onClick={() => setSelectedGroupId(g.id)}
                         >
-                          Requests
+                          {t('groups.requests')}
                         </button>
                       )}
                     {g.memberRole !== 'owner' && g.memberStatus === 'approved' && (
                       <button type="button" className="btn-text" onClick={() => leave(g.id)}>
-                        Leave
+                        {t('groups.leave')}
                       </button>
                     )}
                     {g.ownerPublicUserId === user.publicUserId && (
                       <button type="button" className="btn-text" onClick={() => removeGroup(g.id)}>
-                        Delete
+                        {t('groups.delete')}
                       </button>
                     )}
                   </div>
@@ -259,7 +261,7 @@ export default function GroupsPage({ user }: Props) {
                 {selectedGroupId === g.id && (
                   <div className="dash-requests">
                     {requests.length === 0 ? (
-                      <p className="page-sub">No pending requests</p>
+                      <p className="page-sub">{t('groups.noPending')}</p>
                     ) : (
                       requests.map((r) => (
                         <div key={r.publicUserId} className="dash-list-item">
@@ -270,14 +272,14 @@ export default function GroupsPage({ user }: Props) {
                               className="btn-primary"
                               onClick={() => decide(g.id, r.publicUserId, 'approved')}
                             >
-                              Approve
+                              {t('groups.approve')}
                             </button>
                             <button
                               type="button"
                               className="btn-secondary"
                               onClick={() => decide(g.id, r.publicUserId, 'rejected')}
                             >
-                              Reject
+                              {t('groups.reject')}
                             </button>
                           </div>
                         </div>
@@ -292,9 +294,9 @@ export default function GroupsPage({ user }: Props) {
       </section>
 
       <section className="dash-section">
-        <h2>Public groups</h2>
+        <h2>{t('groups.public')}</h2>
         {publicGroups.length === 0 ? (
-          <p className="page-sub">No public groups yet.</p>
+          <p className="page-sub">{t('groups.empty')}</p>
         ) : (
           <ul className="dash-list">
             {publicGroups.map((g) => (
@@ -308,12 +310,12 @@ export default function GroupsPage({ user }: Props) {
                   </span>
                 </div>
                 {myApprovedIds.has(g.id) ? (
-                  <span className="page-sub">Joined</span>
+                  <span className="page-sub">{t('groups.joined')}</span>
                 ) : myPendingIds.has(g.id) ? (
-                  <span className="page-sub">Pending</span>
+                  <span className="page-sub">{t('groups.pending')}</span>
                 ) : (
                   <button type="button" className="btn-secondary" onClick={() => joinPublic(g.id)}>
-                    Request join
+                    {t('groups.join')}
                   </button>
                 )}
               </li>

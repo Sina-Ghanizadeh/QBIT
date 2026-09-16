@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, FormEvent } from 'react';
 import type { User } from '../types';
 import type { Page } from '../App';
+import { useI18n } from '../i18n';
+import type { MessageKey } from '../i18n';
 
 interface Props {
   user: User | null;
@@ -37,17 +39,18 @@ const GOOGLE_ICON = (
   </svg>
 );
 
-const TABS: { id: Page; label: string; hint: string; requiresAuth?: boolean }[] = [
-  { id: 'dashboard', label: 'Home', hint: 'Dashboard: water, routines, devices', requiresAuth: true },
-  { id: 'profile', label: 'Profile', hint: 'Activity, account & advanced', requiresAuth: true },
-  { id: 'devices', label: 'Devices', hint: 'Claim and control your QBIT', requiresAuth: true },
-  { id: 'network', label: 'Network', hint: 'See people & poke devices' },
-  { id: 'groups', label: 'Groups', hint: 'Private friend circles', requiresAuth: true },
-  { id: 'flash', label: 'Flash', hint: 'Install firmware on a new device' },
-  { id: 'library', label: 'Library', hint: 'Browse and share OLED GIFs' },
+const TAB_DEFS: { id: Page; labelKey: MessageKey; hintKey: MessageKey; requiresAuth?: boolean }[] = [
+  { id: 'dashboard', labelKey: 'nav.home', hintKey: 'nav.homeHint', requiresAuth: true },
+  { id: 'profile', labelKey: 'nav.profile', hintKey: 'nav.profileHint', requiresAuth: true },
+  { id: 'devices', labelKey: 'nav.devices', hintKey: 'nav.devicesHint', requiresAuth: true },
+  { id: 'network', labelKey: 'nav.network', hintKey: 'nav.networkHint' },
+  { id: 'groups', labelKey: 'nav.groups', hintKey: 'nav.groupsHint', requiresAuth: true },
+  { id: 'flash', labelKey: 'nav.flash', hintKey: 'nav.flashHint' },
+  { id: 'library', labelKey: 'nav.library', hintKey: 'nav.libraryHint' },
 ];
 
 export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Props) {
+  const { t, lang, setLang } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [providers, setProviders] = useState<AuthProviders>({ google: true, local: false, register: false });
@@ -90,7 +93,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
   useEffect(() => {
     const updateIndicator = () => {
       const container = tabsRef.current;
-      const visibleTabs = TABS.filter((tab) => !tab.requiresAuth || user);
+      const visibleTabs = TAB_DEFS.filter((tab) => !tab.requiresAuth || user);
       const activeIndex = Math.max(0, visibleTabs.findIndex((tab) => tab.id === page));
       const activeTab = tabRefs.current[activeIndex];
       if (!container || !activeTab) return;
@@ -104,18 +107,18 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
     updateIndicator();
     window.addEventListener('resize', updateIndicator);
     return () => window.removeEventListener('resize', updateIndicator);
-  }, [page, user]);
+  }, [page, user, lang]);
 
   useEffect(() => {
     const container = tabsRef.current;
-    const visibleTabs = TABS.filter((tab) => !tab.requiresAuth || user);
+    const visibleTabs = TAB_DEFS.filter((tab) => !tab.requiresAuth || user);
     const activeIndex = Math.max(0, visibleTabs.findIndex((tab) => tab.id === page));
     const activeTab = tabRefs.current[activeIndex];
     if (!container || !activeTab) return;
     requestAnimationFrame(() => {
       activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     });
-  }, [page, user]);
+  }, [page, user, lang]);
 
   const finishAuth = (data: User) => {
     onUserChange?.(data);
@@ -138,12 +141,12 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setLocalError(typeof data.error === 'string' ? data.error : 'Login failed');
+        setLocalError(typeof data.error === 'string' ? data.error : t('auth.loginFailed'));
         return;
       }
       finishAuth(data as User);
     } catch {
-      setLocalError('Network error');
+      setLocalError(t('auth.networkError'));
     } finally {
       setLocalBusy(false);
     }
@@ -166,12 +169,12 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setLocalError(typeof data.error === 'string' ? data.error : 'Registration failed');
+        setLocalError(typeof data.error === 'string' ? data.error : t('auth.loginFailed'));
         return;
       }
       finishAuth(data as User);
     } catch {
-      setLocalError('Network error');
+      setLocalError(t('auth.networkError'));
     } finally {
       setLocalBusy(false);
     }
@@ -184,7 +187,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
       <button
         type="button"
         className="navbar-brand"
-        title="QBIT Home"
+        title={t('nav.brandHome')}
         onClick={() => setPage(user ? 'dashboard' : 'network')}
       >
         <span className="brand-q">Q</span>
@@ -202,29 +205,45 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
               opacity: indicatorStyle.visible ? 1 : 0,
             }}
           />
-          {TABS.filter((tab) => !tab.requiresAuth || user).map((tab, index) => (
+          {TAB_DEFS.filter((tab) => !tab.requiresAuth || user).map((tab, index) => (
             <button
               key={tab.id}
               ref={(el) => {
                 tabRefs.current[index] = el;
               }}
               className={`nav-tab${page === tab.id ? ' active' : ''}`}
-              title={tab.hint}
+              title={t(tab.hintKey)}
               onClick={() => setPage(tab.id)}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </div>
       </div>
 
       <div className="navbar-user">
+        <div className="lang-switch" role="group" aria-label={t('nav.lang')}>
+          <button
+            type="button"
+            className={lang === 'en' ? 'active' : ''}
+            onClick={() => setLang('en')}
+          >
+            {t('nav.langEn')}
+          </button>
+          <button
+            type="button"
+            className={lang === 'fa' ? 'active' : ''}
+            onClick={() => setLang('fa')}
+          >
+            {t('nav.langFa')}
+          </button>
+        </div>
         {user ? (
           <>
             <button
               type="button"
               className="navbar-profile-btn"
-              title="Open Profile"
+              title={t('nav.openProfile')}
               onClick={() => setPage('profile')}
             >
               {user.avatar && (
@@ -243,7 +262,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                 <polyline points="16 17 21 12 16 7" />
                 <line x1="21" y1="12" x2="9" y2="12" />
               </svg>
-              <span className="logout-text">Logout</span>
+              <span className="logout-text">{t('nav.logout')}</span>
             </a>
           </>
         ) : (
@@ -252,14 +271,14 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
               className="btn btn-login"
               onClick={() => setMenuOpen(!menuOpen)}
             >
-              Login
+              {t('nav.login')}
             </button>
             {menuOpen && (
               <div className="login-menu">
                 {providers.google && (
                   <a className="login-menu-item" href={`${apiUrl}/auth/google`}>
                     <span className="login-menu-icon">{GOOGLE_ICON}</span>
-                    <span>Google</span>
+                    <span>{t('nav.google')}</span>
                   </a>
                 )}
                 {providers.local && (
@@ -277,7 +296,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                             setLocalError(null);
                           }}
                         >
-                          Sign in
+                          {t('auth.signIn')}
                         </button>
                         <button
                           type="button"
@@ -287,19 +306,19 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                             setLocalError(null);
                           }}
                         >
-                          Sign up
+                          {t('auth.register')}
                         </button>
                       </div>
                     )}
                     <div className="login-local-title">
-                      {authMode === 'register' ? 'Create account' : 'Local account'}
+                      {authMode === 'register' ? t('auth.register') : t('auth.signIn')}
                     </div>
                     {authMode === 'register' && (
                       <input
                         className="login-local-input"
                         type="text"
                         autoComplete="nickname"
-                        placeholder="Display name (optional)"
+                        placeholder={t('auth.displayName')}
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
                         maxLength={64}
@@ -309,7 +328,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                       className="login-local-input"
                       type="text"
                       autoComplete="username"
-                      placeholder="Username"
+                      placeholder={t('auth.username')}
                       value={localUser}
                       onChange={(e) => setLocalUser(e.target.value)}
                       required
@@ -322,7 +341,7 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                       className="login-local-input"
                       type="password"
                       autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
-                      placeholder="Password"
+                      placeholder={t('auth.password')}
                       value={localPass}
                       onChange={(e) => setLocalPass(e.target.value)}
                       required
@@ -331,18 +350,16 @@ export default function Navbar({ user, apiUrl, page, setPage, onUserChange }: Pr
                     {localError && <div className="login-local-error">{localError}</div>}
                     <button className="login-local-submit" type="submit" disabled={localBusy}>
                       {localBusy
-                        ? authMode === 'register'
-                          ? 'Creating…'
-                          : 'Signing in…'
+                        ? t('common.loading')
                         : authMode === 'register'
-                          ? 'Create account'
-                          : 'Sign in'}
+                          ? t('auth.register')
+                          : t('auth.signIn')}
                     </button>
                   </form>
                 )}
                 {noProviders && (
                   <div className="login-menu-empty">
-                    No login configured. Set Google OAuth or enable local registration.
+                    {t('auth.noProviders')}
                   </div>
                 )}
               </div>

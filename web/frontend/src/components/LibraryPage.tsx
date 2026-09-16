@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import QgifPreview from './QgifPreview';
 import GifConverterPanel from './GifConverterPanel';
+import SetOnDeviceControl from './SetOnDeviceControl';
+import { useI18n } from '../i18n';
 import type { User } from '../types';
 
 const MAX_CONCURRENT_RAW = 8;
@@ -114,6 +116,7 @@ export default function LibraryPage({
   onOpenItem,
   onClearFilters,
 }: Props) {
+  const { t } = useI18n();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -134,6 +137,19 @@ export default function LibraryPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchDownloading, setBatchDownloading] = useState(false);
+  const [toasts, setToasts] = useState<Array<{ id: number; text: string; ok: boolean; exiting?: boolean }>>([]);
+  const toastIdRef = useRef(0);
+
+  const showToast = useCallback((text: string, ok = true) => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev.slice(-2), { id, text, ok }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)));
+    }, 2600);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3200);
+  }, []);
 
   useEffect(() => {
     setTagFilter(initialTag || '');
@@ -233,10 +249,10 @@ export default function LibraryPage({
         setUploadMsg({ text: `Uploaded ${file.name}`, ok: true });
         await fetchItems();
       } else {
-        setUploadMsg({ text: data.error || 'Upload failed', ok: false });
+        setUploadMsg({ text: data.error || t('library.uploadFailed'), ok: false });
       }
     } catch {
-      setUploadMsg({ text: 'Network error', ok: false });
+      setUploadMsg({ text: t('common.networkError'), ok: false });
     } finally {
       setUploading(false);
     }
@@ -335,10 +351,10 @@ export default function LibraryPage({
         await fetchItems();
       } else {
         const data = await res.json();
-        alert(data.error || 'Delete failed');
+        alert(data.error || t('library.deleteFailed'));
       }
     } catch {
-      alert('Network error');
+      alert(t('common.networkError'));
     }
   };
 
@@ -400,10 +416,10 @@ export default function LibraryPage({
         }
       } else {
         const data = await res.json();
-        alert(data.error || 'Batch delete failed');
+        alert(data.error || t('library.deleteFailed'));
       }
     } catch {
-      alert('Network error');
+      alert(t('common.networkError'));
     } finally {
       setBatchDeleting(false);
     }
@@ -432,10 +448,10 @@ export default function LibraryPage({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
-        alert('Download failed');
+        alert(t('library.downloadFailed'));
       }
     } catch {
-      alert('Network error');
+      alert(t('common.networkError'));
     } finally {
       setBatchDownloading(false);
     }
@@ -484,9 +500,9 @@ export default function LibraryPage({
       <div className="library-header">
         <div>
           <span className="library-title">
-            QGIF Library
+            {t('library.title')}
             {items.length > 0 && (
-              <span className="library-count">{items.length} files</span>
+              <span className="library-count">{t('library.files', { n: items.length })}</span>
             )}
           </span>
         </div>
@@ -494,11 +510,11 @@ export default function LibraryPage({
           <div className="library-header-actions">
             {selectMode ? (
               <button className="btn-lib-action" onClick={exitSelectMode}>
-                Cancel
+                {t('library.cancel')}
               </button>
             ) : (
               <button className="btn-lib-action" onClick={() => setSelectMode(true)}>
-                Select
+                {t('library.select')}
               </button>
             )}
           </div>
@@ -516,14 +532,14 @@ export default function LibraryPage({
         <input
           className="library-search"
           type="text"
-          placeholder="Search by name..."
+          placeholder={t('library.search')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
         <input
           className="library-search"
           type="text"
-          placeholder="Filter tag..."
+          placeholder={t('library.filterTag')}
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
         />
@@ -532,21 +548,21 @@ export default function LibraryPage({
           value={sortMode}
           onChange={(e) => setSortMode(e.target.value as SortMode)}
         >
-          <option value="trending">Trending</option>
-          <option value="stars">Most stars</option>
-          <option value="downloads">Most downloads</option>
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="az">Name A-Z</option>
-          <option value="za">Name Z-A</option>
+          <option value="trending">{t('library.trending')}</option>
+          <option value="stars">{t('library.mostStars')}</option>
+          <option value="downloads">{t('library.mostDownloads')}</option>
+          <option value="newest">{t('library.newest')}</option>
+          <option value="oldest">{t('library.oldest')}</option>
+          <option value="az">{t('library.nameAz')}</option>
+          <option value="za">{t('library.nameZa')}</option>
         </select>
       </div>
       {(uploaderFilter || tagFilter) && (
         <div className="library-filter-banner">
           <span className="page-sub">
-            {uploaderFilter ? `Uploader filter active` : ''}
+            {uploaderFilter ? t('library.uploaderFilter') : ''}
             {uploaderFilter && tagFilter ? ' · ' : ''}
-            {tagFilter ? `Tag: #${tagFilter}` : ''}
+            {tagFilter ? t('library.tagFilter', { tag: tagFilter }) : ''}
           </span>
           <button
             type="button"
@@ -557,7 +573,7 @@ export default function LibraryPage({
               onClearFilters?.();
             }}
           >
-            Clear filters
+            {t('library.clearFilters')}
           </button>
         </div>
       )}
@@ -565,9 +581,9 @@ export default function LibraryPage({
       {compareIds.length > 0 && (
         <div className="library-compare">
           <div className="library-compare-head">
-            <strong>Compare</strong>
+            <strong>{t('library.compare')}</strong>
             <button type="button" className="btn-text" onClick={() => setCompareIds([])}>
-              Clear
+              {t('library.clear')}
             </button>
           </div>
           <div className="library-compare-grid">
@@ -576,7 +592,7 @@ export default function LibraryPage({
               return (
                 <div key={id} className="library-compare-pane">
                   <div className="page-sub">{item?.filename || id}</div>
-                  {compareBlobs[id] ? <QgifPreview src={compareBlobs[id]} /> : <div>Loading…</div>}
+                  {compareBlobs[id] ? <QgifPreview src={compareBlobs[id]} /> : <div>{t('library.loading')}</div>}
                 </div>
               );
             })}
@@ -588,13 +604,13 @@ export default function LibraryPage({
       {selectMode && (
         <div className="library-selection-bar">
           <span className="library-selection-count">
-            {selectedIds.size} selected
+            {t('library.selected', { n: selectedIds.size })}
           </span>
           <button className="btn-lib-action btn-sm" onClick={selectAll}>
-            All
+            {t('library.all')}
           </button>
           <button className="btn-lib-action btn-sm" onClick={deselectAll}>
-            None
+            {t('library.none')}
           </button>
           <div className="library-selection-spacer" />
           {selectedIds.size > 0 && (
@@ -604,7 +620,7 @@ export default function LibraryPage({
                 onClick={handleBatchDownload}
                 disabled={batchDownloading}
               >
-                {batchDownloading ? 'Zipping...' : `Download (${selectedIds.size})`}
+                {batchDownloading ? t('library.zipping') : t('library.downloadN', { n: selectedIds.size })}
               </button>
               {ownedSelectedCount > 0 && (
                 <button
@@ -612,7 +628,7 @@ export default function LibraryPage({
                   onClick={handleBatchDelete}
                   disabled={batchDeleting}
                 >
-                  {batchDeleting ? 'Deleting...' : `Delete (${ownedSelectedCount})`}
+                  {batchDeleting ? t('library.deleting') : t('library.deleteN', { n: ownedSelectedCount })}
                 </button>
               )}
             </>
@@ -643,7 +659,7 @@ export default function LibraryPage({
             }}
           />
           <span className="library-upload-icon">&#8682;</span>
-          {uploading ? 'Uploading...' : 'Drop .qgif files here or click to upload'}
+          {uploading ? t('library.uploading') : t('library.dropUpload')}
           {uploadMsg && (
             <div className={`library-upload-msg ${uploadMsg.ok ? 'ok' : 'error'}`}>
               {uploadMsg.text}
@@ -652,17 +668,17 @@ export default function LibraryPage({
         </div>
       ) : (
         <div className="library-login-hint">
-          Log in to upload .qgif files to the community library.
+          {t('library.loginUpload')}
         </div>
       )}
 
       {loading ? (
-        <div className="library-empty">Loading...</div>
+        <div className="library-empty">{t('library.loading')}</div>
       ) : displayItems.length === 0 ? (
         <div className="library-empty">
           {searchQuery.trim() || tagFilter.trim()
-            ? 'No files match your search.'
-            : 'No .qgif files yet. Be the first to upload one!'}
+            ? t('library.emptySearch')
+            : t('library.empty')}
         </div>
       ) : (
         <div className="library-grid">
@@ -701,8 +717,8 @@ export default function LibraryPage({
                       e.stopPropagation();
                       handleToggleStar(item.id);
                     }}
-                    title={item.starredByMe ? 'Unstar' : 'Star'}
-                    aria-label={item.starredByMe ? 'Unstar' : 'Star'}
+                    title={item.starredByMe ? t('library.unstar') : t('library.star')}
+                    aria-label={item.starredByMe ? t('library.unstar') : t('library.star')}
                   >
                     &#9733;
                   </button>
@@ -713,7 +729,7 @@ export default function LibraryPage({
                   <div className="library-card-name">{item.filename}</div>
                   <div className="library-card-stats">
                     {(item.starCount ?? 0) > 0 && (
-                      <span className="library-card-stat" title="Stars">
+                      <span className="library-card-stat" title={t('library.star')}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                           <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
                         </svg>
@@ -721,7 +737,7 @@ export default function LibraryPage({
                       </span>
                     )}
                     {(item.downloadCount ?? 0) > 0 && (
-                      <span className="library-card-stat" title="Downloads">
+                      <span className="library-card-stat" title={t('library.downloads')}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                           <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
                         </svg>
@@ -749,29 +765,36 @@ export default function LibraryPage({
                 </div>
                 {(item.tags || []).length > 0 && (
                   <div className="chip-row library-card-tags">
-                    {(item.tags || []).map((t) => (
+                    {(item.tags || []).map((tag) => (
                       <button
-                        key={t}
+                        key={tag}
                         type="button"
                         className="chip"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setTagFilter(t);
+                          setTagFilter(tag);
                         }}
                       >
-                        #{t}
+                        #{tag}
                       </button>
                     ))}
                   </div>
                 )}
                 {!selectMode && (
                   <div className="library-card-actions">
+                    <SetOnDeviceControl
+                      apiUrl={apiUrl}
+                      libraryId={item.id}
+                      user={user}
+                      onToast={showToast}
+                      compact
+                    />
                     <a
-                      className="btn-download"
+                      className="btn-download btn-download-secondary"
                       href={`${apiUrl}/api/library/${item.id}/download`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      Download
+                      {t('library.download')}
                     </a>
                     <button
                       type="button"
@@ -781,7 +804,7 @@ export default function LibraryPage({
                         toggleCompare(item.id);
                       }}
                     >
-                      {compareIds.includes(item.id) ? 'Compared' : 'Compare'}
+                      {compareIds.includes(item.id) ? t('library.compared') : t('library.compare')}
                     </button>
                     {user && user.publicUserId === item.uploaderPublicId && (
                       <button
@@ -791,7 +814,7 @@ export default function LibraryPage({
                           handleDelete(item.id, item.filename);
                         }}
                       >
-                        Delete
+                        {t('library.delete')}
                       </button>
                     )}
                   </div>
@@ -801,6 +824,18 @@ export default function LibraryPage({
           ))}
         </div>
       )}
+
+      <div className="poke-notifications library-toasts" aria-live="polite">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`poke-notification ${toast.exiting ? 'poke-notification-exit' : 'poke-notification-enter'}${toast.ok ? '' : ' library-toast-error'}`}
+          >
+            <div className="poke-notification-from">{toast.ok ? t('library.toastOk') : t('library.toastErr')}</div>
+            <div className="poke-notification-text">{toast.text}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { gifFileToQgif, supportsGifDecode, type ScaleMode } from '../lib/gifToQgif';
 import QgifPreview from './QgifPreview';
+import { useI18n } from '../i18n';
 
 interface Props {
   apiUrl: string;
@@ -15,6 +16,7 @@ function toBlobPart(bytes: Uint8Array): BlobPart {
 }
 
 export default function GifConverterPanel({ apiUrl, canUpload, onUploaded }: Props) {
+  const { t } = useI18n();
   const [threshold, setThreshold] = useState(128);
   const [invert, setInvert] = useState(false);
   const [scale, setScale] = useState<ScaleMode>('fit');
@@ -80,7 +82,7 @@ export default function GifConverterPanel({ apiUrl, canUpload, onUploaded }: Pro
 
   return (
     <section className="gif-converter">
-      <h2 className="gif-converter-title">GIF to QGIF converter</h2>
+      <h2 className="gif-converter-title">{t('gif.title')}</h2>
       <p className="page-sub">
         Convert a standard GIF to QBIT .qgif (128x64 mono), then download or upload to the library.
       </p>
@@ -104,7 +106,7 @@ export default function GifConverterPanel({ apiUrl, canUpload, onUploaded }: Pro
         </label>
         <label className="dash-toggle compact">
           <input type="checkbox" checked={invert} onChange={(e) => setInvert(e.target.checked)} />
-          <span>Invert</span>
+          <span>{t('gif.invert')}</span>
         </label>
         <label>
           Scale

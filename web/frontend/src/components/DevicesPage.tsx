@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Device, NetworkDeviceNode, User } from '../types';
+import { useI18n } from '../i18n';
 import ClaimDialog from './ClaimDialog';
 import DeviceCloudPanel, { type DeviceSocket } from './DeviceCloudPanel';
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function DevicesPage({ liveDevices, socket }: Props) {
+  const { t } = useI18n();
   const [myDevices, setMyDevices] = useState<NetworkDeviceNode[]>([]);
   const [claimDevice, setClaimDevice] = useState<Device | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +53,10 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
 
   const handleUnclaim = async (device: NetworkDeviceNode) => {
     if (!device.online || !device.pokeToken) {
-      setError('Device must be online to unclaim');
+      setError(t('devices.mustOnline'));
       return;
     }
-    if (!confirm(`Unclaim ${device.name}?`)) return;
+    if (!confirm(`${t('devices.unclaim')} ${device.name}?`)) return;
     setBusy(true);
     setError(null);
     try {
@@ -75,22 +77,19 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
   return (
     <div className="page-scroll devices-page">
       <header className="page-header">
-        <h1>Devices</h1>
-        <p className="page-sub">
-          1) Power on your QBIT · 2) Claim it below when it appears · 3) Stream cam or set a GIF from here.
-        </p>
+        <h1>{t('devices.title')}</h1>
+        <p className="page-sub">{t('devices.sub')}</p>
       </header>
 
       {error && <div className="page-error">{error}</div>}
 
       <section className="dash-section">
-        <h2>Add a device</h2>
+        <h2>{t('devices.unclaimed')}</h2>
         <p className="page-sub">
-          Power on your QBIT and wait until it appears below, then claim it and long-press on the
-          device to confirm.
+          {t('devices.addHint')}
         </p>
         {unclaimedOnline.length === 0 ? (
-          <p className="page-sub">No unclaimed devices online right now.</p>
+          <p className="page-sub">{t('devices.none')}</p>
         ) : (
           <ul className="dash-list">
             {unclaimedOnline.map((d) => (
@@ -108,7 +107,7 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
                   disabled={busy}
                   onClick={() => setClaimDevice(d)}
                 >
-                  Add / Claim
+                  {t('devices.claim')}
                 </button>
               </li>
             ))}
@@ -117,9 +116,9 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
       </section>
 
       <section className="dash-section">
-        <h2>My devices</h2>
+        <h2>{t('devices.mine')}</h2>
         {myDevices.length === 0 ? (
-          <p className="page-sub">You have not claimed any devices yet.</p>
+          <p className="page-sub">{t('devices.none')}</p>
         ) : (
           <ul className="dash-list">
             {myDevices.map((d) => (
@@ -129,7 +128,7 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
                     <strong>{d.name}</strong>
                     <span className="page-sub">
                       {' '}
-                      · {d.online ? 'online' : 'offline'} · {d.deviceId}
+                      · {d.online ? t('devices.online') : t('devices.offline')} · {d.deviceId}
                     </span>
                   </div>
                   <div className="dash-form-row">
@@ -139,16 +138,16 @@ export default function DevicesPage({ liveDevices, socket }: Props) {
                         checked={!!d.showInGlobal}
                         onChange={(e) => toggleDeviceGlobal(d.deviceId, e.target.checked)}
                       />
-                      <span>Show in global</span>
+                      <span>{t('devices.visibleGlobal')}</span>
                     </label>
                     <button
                       type="button"
                       className="btn-text"
                       disabled={busy || !d.online}
-                      title={!d.online ? 'Device must be online' : 'Unclaim'}
+                      title={!d.online ? t('devices.mustOnline') : t('devices.unclaim')}
                       onClick={() => handleUnclaim(d)}
                     >
-                      Unclaim
+                      {t('devices.unclaim')}
                     </button>
                   </div>
                 </div>

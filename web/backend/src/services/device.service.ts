@@ -26,6 +26,9 @@ const stmtRecordUpdateOffline = db.prepare(
   'UPDATE device_records SET status = ?, lastSeen = ? WHERE deviceId = ?'
 );
 const stmtRecordAll = db.prepare('SELECT deviceId, name, ip, publicIp, version, lastSeen, status FROM device_records');
+const stmtRecordGet = db.prepare(
+  'SELECT deviceId, name, ip, publicIp, version, lastSeen, status FROM device_records WHERE deviceId = ?'
+);
 const stmtRecordDelete = db.prepare('DELETE FROM device_records WHERE deviceId = ?');
 
 // ---------------------------------------------------------------------------
@@ -151,6 +154,13 @@ export function broadcastToAllDevices(payload: Record<string, unknown>): void {
 
 export function getDevice(id: string): DeviceState | undefined {
   return devices.get(id);
+}
+
+export function getDeviceDisplayName(deviceId: string): string {
+  const live = devices.get(deviceId);
+  if (live?.name) return live.name;
+  const row = stmtRecordGet.get(deviceId) as { name?: string } | undefined;
+  return row?.name || deviceId.slice(0, 8);
 }
 
 export function getDeviceCount(): number {

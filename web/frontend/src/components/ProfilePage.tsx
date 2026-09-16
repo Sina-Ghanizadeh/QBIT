@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { NetworkDeviceNode, User } from '../types';
+import { useI18n } from '../i18n';
 import ActivityFeed, { type ActivityEventDto } from './ActivityFeed';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -24,11 +25,33 @@ interface AnimationGrant {
   createdAt: string;
 }
 
+interface AnimationTarget {
+  deviceId: string;
+  deviceName: string;
+  online: boolean;
+  ownerPublicUserId: string;
+  ownerDisplayName: string;
+  via: 'user' | 'group';
+  groupId?: string;
+  grantId: string;
+}
+
+interface LibraryOption {
+  id: string;
+  filename: string;
+}
+
 export default function ProfilePage({ user, liveActivity = null }: Props) {
+  const { t } = useI18n();
   const [isGlobal, setIsGlobal] = useState(false);
   const [devices, setDevices] = useState<NetworkDeviceNode[]>([]);
   const [bots, setBots] = useState<BotLink[]>([]);
   const [grants, setGrants] = useState<AnimationGrant[]>([]);
+  const [targets, setTargets] = useState<AnimationTarget[]>([]);
+  const [library, setLibrary] = useState<LibraryOption[]>([]);
+  const [gifByDevice, setGifByDevice] = useState<Record<string, string>>({});
+  const [sendingDeviceId, setSendingDeviceId] = useState<string | null>(null);
+  const [animMsg, setAnimMsg] = useState<string | null>(null);
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linkExpires, setLinkExpires] = useState<string | null>(null);
   const [grantType, setGrantType] = useState<'user' | 'group'>('user');
@@ -60,6 +83,24 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
       .then((r) => (r.ok ? r.json() : { grants: [] }))
       .then((d) => setGrants(d.grants || []))
       .catch(() => setGrants([]));
+
+    fetch(`${API_URL}/api/me/animation-targets`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : { targets: [] }))
+      .then((d) => setTargets(d.targets || []))
+      .catch(() => setTargets([]));
+
+    fetch(`${API_URL}/api/library?sort=newest`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => {
+        const list = Array.isArray(d) ? d : [];
+        setLibrary(
+          list.slice(0, 60).map((x: { id: string; filename: string }) => ({
+            id: x.id,
+            filename: x.filename,
+          }))
+        );
+      })
+      .catch(() => setLibrary([]));
   }, []);
 
   const toggleGlobal = async () => {
@@ -84,6 +125,8 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
 
   useEffect(() => {
     refresh();
+    const id = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(id);
   }, [refresh]);
 
   const startTelegramLink = async () => {
@@ -146,6 +189,33 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
     refresh();
   };
 
+  const setGifOnTarget = async (deviceId: string) => {
+    const libraryId = gifByDevice[deviceId] || library[0]?.id;
+    if (!libraryId) {
+      setError('Pick a library GIF first');
+      return;
+    }
+    setSendingDeviceId(deviceId);
+    setError(null);
+    setAnimMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/devices/${encodeURIComponent(deviceId)}/animation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ libraryId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to set animation');
+      setAnimMsg('GIF sent — device is downloading and playing.');
+      refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setSendingDeviceId(null);
+    }
+  };
+
   const copyPublicId = async () => {
     try {
       await navigator.clipboard.writeText(user.publicUserId);
@@ -161,11 +231,12 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
   return (
     <div className="page-scroll profile-page">
       <header className="page-header">
-        <h1>Profile</h1>
-        <p className="page-sub">Activity, account, and advanced connections.</p>
+        <h1>{t('profile.title')}</h1>
+        <p className="page-sub">{t('profile.sub')}</p>
       </header>
 
       {error && <div className="page-error">{error}</div>}
+      {animMsg && <p className="page-sub">{animMsg}</p>}
 
       <section className="dash-section profile-card">
         <div className="profile-identity">
@@ -183,11 +254,11 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
           )}
           <div className="profile-identity-text">
             <h2>{user.displayName}</h2>
-            <p className="page-sub">Public ID</p>
+            <p className="page-sub">{t('profile.publicId')}</p>
             <div className="profile-id-row">
               <code className="profile-id">{user.publicUserId}</code>
               <button type="button" className="btn-secondary" onClick={() => void copyPublicId()}>
-                {copied ? 'Copied' : 'Copy'}
+                {copied ? t('profile.copied') : t('profile.copy')}
               </button>
             </div>
           </div>
@@ -195,31 +266,89 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
       </section>
 
       <section className="dash-section">
-        <h2>Appear on Global</h2>
-        <p className="page-sub">When on, you show up in Network → Global for other global users.</p>
+        <h2>{t('profile.globalTitle')}</h2>
+        <p className="page-sub">{t('profile.globalSub')}</p>
         <label className="dash-toggle">
           <input type="checkbox" checked={isGlobal} disabled={busy} onChange={() => void toggleGlobal()} />
-          <span>{isGlobal ? 'Global is on' : 'Global is off'}</span>
+          <span>{isGlobal ? t('profile.globalOn') : t('profile.globalOff')}</span>
         </label>
       </section>
 
       <ActivityFeed apiUrl={API_URL} liveEvent={liveActivity} />
 
       <section className="dash-section">
-        <h2>Animation permissions</h2>
-        <p className="page-sub">Let a friend or group set GIFs on your device.</p>
+        <h2>{t('profile.canAnimate')}</h2>
+        <p className="page-sub">
+          {t('profile.canAnimateSub')}
+        </p>
+        {targets.length === 0 ? (
+          <p className="page-sub">{t('profile.canAnimateEmpty')}</p>
+        ) : (
+          <ul className="dash-list">
+            {targets.map((target) => {
+              const selected = gifByDevice[target.deviceId] || library[0]?.id || '';
+              return (
+                <li key={`${target.grantId}-${target.deviceId}`} className="dash-list-item col">
+                  <div>
+                    <strong>{target.deviceName}</strong>
+                    <span className={`status-pill ${target.online ? 'on' : 'off'}`}>
+                      {target.online ? t('status.online') : t('status.offline')}
+                    </span>
+                    <p className="page-sub">
+                      {t('profile.owner', { name: target.ownerDisplayName })}
+                      {target.via === 'group' ? t('profile.viaGroup') : t('profile.viaDirect')}
+                    </p>
+                  </div>
+                  <div className="dash-form-row">
+                    <select
+                      value={selected}
+                      disabled={!target.online || library.length === 0 || sendingDeviceId === target.deviceId}
+                      onChange={(e) =>
+                        setGifByDevice((prev) => ({ ...prev, [target.deviceId]: e.target.value }))
+                      }
+                      aria-label={`GIF for ${target.deviceName}`}
+                    >
+                      {library.length === 0 ? (
+                        <option value="">{t('profile.noLibrary')}</option>
+                      ) : (
+                        library.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.filename}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={!target.online || !selected || sendingDeviceId === target.deviceId}
+                      onClick={() => void setGifOnTarget(target.deviceId)}
+                    >
+                      {sendingDeviceId === target.deviceId ? t('profile.sending') : t('profile.setGif')}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="dash-section">
+        <h2>{t('profile.allowed')}</h2>
+        <p className="page-sub">{t('profile.allowedSub')}</p>
         <div className="dash-form-row">
           <select value={grantType} onChange={(e) => setGrantType(e.target.value as 'user' | 'group')}>
-            <option value="user">User (public ID)</option>
-            <option value="group">Group ID</option>
+            <option value="user">{t('profile.grantUser')}</option>
+            <option value="group">{t('profile.grantGroup')}</option>
           </select>
           <input
-            placeholder={grantType === 'user' ? 'Public user ID' : 'Group ID'}
+            placeholder={grantType === 'user' ? t('profile.publicUserId') : t('profile.groupId')}
             value={grantTarget}
             onChange={(e) => setGrantTarget(e.target.value)}
           />
           <select value={grantDeviceId} onChange={(e) => setGrantDeviceId(e.target.value)}>
-            <option value="">All my devices</option>
+            <option value="">{t('profile.allDevices')}</option>
             {devices.map((d) => (
               <option key={d.deviceId} value={d.deviceId}>
                 {d.name}
@@ -227,7 +356,7 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
             ))}
           </select>
           <button type="button" className="btn-primary" disabled={busy} onClick={() => void addGrant()}>
-            Grant
+            {t('profile.grant')}
           </button>
         </div>
         {grants.length > 0 && (
@@ -239,7 +368,7 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
                   {g.deviceId ? ` @ ${g.deviceId.slice(0, 8)}` : ' (all)'}
                 </span>
                 <button type="button" className="btn-text" onClick={() => void revokeGrant(g.id)}>
-                  Revoke
+                  {t('profile.revoke')}
                 </button>
               </li>
             ))}
@@ -248,25 +377,27 @@ export default function ProfilePage({ user, liveActivity = null }: Props) {
       </section>
 
       <section className="dash-section">
-        <h2>Telegram</h2>
-        <p className="page-sub">Link the bot for water and routine reminders outside the web app.</p>
+        <h2>{t('profile.telegram')}</h2>
+        <p className="page-sub">{t('profile.telegramSub')}</p>
         {telegramLinked ? (
           <div className="dash-form-row">
-            <span className="page-sub">Linked</span>
+            <span className="page-sub">{t('profile.linked')}</span>
             <button type="button" className="btn-secondary" onClick={() => void unlinkTelegram()}>
-              Unlink
+              {t('profile.unlink')}
             </button>
           </div>
         ) : (
           <>
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => void startTelegramLink()}>
-              Generate link code
+              {t('profile.genLink')}
             </button>
             {linkCode && (
               <p className="dash-code">
-                Send to the bot: <code>/start {linkCode}</code>
+                {t('profile.sendBot')} <code>/start {linkCode}</code>
                 {linkExpires && (
-                  <span className="page-sub"> (expires {new Date(linkExpires).toLocaleTimeString()})</span>
+                  <span className="page-sub">
+                    {t('profile.expires', { time: new Date(linkExpires).toLocaleTimeString() })}
+                  </span>
                 )}
               </p>
             )}

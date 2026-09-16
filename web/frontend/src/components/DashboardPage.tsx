@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { NetworkDeviceNode, User } from '../types';
+import { useI18n } from '../i18n';
 import RoutinesPanel from './RoutinesPanel';
 import WaterPanel from './WaterPanel';
 
@@ -18,6 +19,7 @@ export default function DashboardPage({
   onOpenDevices,
   onOpenProfile,
 }: Props) {
+  const { t } = useI18n();
   const [isGlobal, setIsGlobal] = useState(false);
   const [devices, setDevices] = useState<NetworkDeviceNode[]>([]);
 
@@ -47,52 +49,50 @@ export default function DashboardPage({
   return (
     <div className="page-scroll dashboard-page">
       <header className="page-header">
-        <h1>
-          <span className="brand-mark">Q</span>BIT Home
-        </h1>
+        <h1>{t('home.title')}</h1>
         <p className="page-sub">
-          Hi {user.displayName} — your daily dashboard. Devices, groups, and account live in the menu.
+          {t('home.greeting', { name: user.displayName })}
         </p>
       </header>
 
       {showGuide && (
         <section className="dash-section flow-guide">
-          <h2>Start here</h2>
+          <h2>{t('home.startHere')}</h2>
           <ol className="flow-steps">
             <li className={needsDevice ? 'active' : 'done'}>
               <div>
-                <strong>Claim a QBIT</strong>
+                <strong>{t('home.claimTitle')}</strong>
                 <p className="page-sub">
                   {needsDevice
-                    ? 'Turn the device on, open Devices in the menu, and claim it when it appears.'
-                    : `${devices.length} device(s) linked · ${onlineCount} online`}
+                    ? t('home.claimNeed')
+                    : t('home.claimDone', { count: devices.length, online: onlineCount })}
                 </p>
               </div>
               {needsDevice && (
                 <button type="button" className="btn-primary" onClick={onOpenDevices}>
-                  Go to Devices
+                  {t('home.goDevices')}
                 </button>
               )}
             </li>
             <li className={!needsDevice && needsGlobal ? 'active' : needsGlobal ? '' : 'done'}>
               <div>
-                <strong>Show up on Global Network</strong>
-                <p className="page-sub">Optional — enable it from Profile so others can find you.</p>
+                <strong>{t('home.globalTitle')}</strong>
+                <p className="page-sub">{t('home.globalSub')}</p>
               </div>
               {!needsDevice && needsGlobal && (
                 <button type="button" className="btn-secondary" onClick={onOpenProfile}>
-                  Open Profile
+                  {t('home.openProfile')}
                 </button>
               )}
             </li>
             <li className={!needsDevice ? 'active' : ''}>
               <div>
-                <strong>Open Network & poke</strong>
-                <p className="page-sub">Tap a device or friend node, or use Studio for quick messages.</p>
+                <strong>{t('home.networkTitle')}</strong>
+                <p className="page-sub">{t('home.networkSub')}</p>
               </div>
               {!needsDevice && (
                 <button type="button" className="btn-primary" onClick={onOpenNetwork}>
-                  Open Network
+                  {t('home.openNetwork')}
                 </button>
               )}
             </li>
@@ -108,7 +108,7 @@ export default function DashboardPage({
       {!showGuide && (
         <section className="dash-section dash-actions">
           <button type="button" className="btn-primary" onClick={onOpenNetwork}>
-            Open Network
+            {t('home.openNetwork')}
           </button>
         </section>
       )}

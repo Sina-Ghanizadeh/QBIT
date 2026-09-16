@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { PokeHistoryEntry } from '../utils/pokeHistory';
+import { useI18n } from '../i18n';
 
 const SNAP_CLOSE_THRESHOLD = 100;
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function PokeHistoryPanel({ entries, hasEntries = false, onClose, onClear, visible }: Props) {
+  const { t } = useI18n();
   const [dragOffset, setDragOffset] = useState(0);
   const touchStartY = useRef<number | null>(null);
   const initialDragOffset = useRef(0);
@@ -111,14 +113,14 @@ export default function PokeHistoryPanel({ entries, hasEntries = false, onClose,
           <span className="poke-history-sheet-handle-bar" />
         </div>
         <div className="poke-header">
-          <span className="poke-title">Poke History</span>
-          <button className="poke-close" onClick={onClose} aria-label="Close">
+          <span className="poke-title">{t('poke.history')}</span>
+          <button className="poke-close" onClick={onClose} aria-label={t('common.close')}>
             &times;
           </button>
         </div>
         <div className="poke-history-list">
           {entries.length === 0 ? (
-            <p className="poke-history-empty">No poke history in the last 24 hours.</p>
+            <p className="poke-history-empty">{t('poke.historyEmpty')}</p>
           ) : (
             <ul>
               {entries.map((e, i) => (
@@ -134,7 +136,7 @@ export default function PokeHistoryPanel({ entries, hasEntries = false, onClose,
         </div>
         <div className="poke-history-actions">
           <button type="button" className="btn btn-ghost" onClick={onClear} disabled={entries.length === 0}>
-            Clear history
+            {t('poke.clearHistory')}
           </button>
         </div>
       </div>

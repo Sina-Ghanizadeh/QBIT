@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Network } from 'vis-network/standalone';
 import { DataSet } from 'vis-data/standalone';
 import type { Device, OnlineUser } from '../types';
+import { useI18n } from '../i18n';
 
 const HUB_ID = '__hub__';
 const USER_NODE_PREFIX = 'user:';
@@ -28,7 +29,7 @@ interface Props {
 const EDGE_FRIEND_LENGTH = 100;
 const EDGE_OTHER_LENGTH = 180;
 
-const GLOW_COLOR_DEVICE = '#d32f2f';
+const GLOW_COLOR_DEVICE = '#e53935';
 const GLOW_COLOR_USER = '#1976d2';
 const GLOW_RAMP_MS = 120;   // quick brighten
 const GLOW_FADE_MS = 1000;  // then fade back over 1s
@@ -49,6 +50,7 @@ export default function NetworkGraph({
   onSelectDevice,
   onSelectUser,
 }: Props) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   const nodesRef = useRef(new DataSet<Record<string, unknown>>());
@@ -97,7 +99,7 @@ export default function NetworkGraph({
         shape: 'hexagon',
         size: 45,
         color: {
-          border: '#d32f2f',
+          border: '#e53935',
           background: '#1a1a1a',
           highlight: { border: '#ff4d4d', background: '#222' },
           hover: { border: '#ff4d4d', background: '#222' },
@@ -120,7 +122,7 @@ export default function NetworkGraph({
           borderWidth: 2,
           shadow: { enabled: true, size: 6, color: 'rgba(0,0,0,0.3)' },
           color: {
-            border: '#d32f2f',
+            border: '#e53935',
             background: '#242424',
             highlight: { border: '#ff4d4d', background: '#333333' },
             hover: { border: '#ff4d4d', background: '#2c2c2c' },
@@ -128,7 +130,7 @@ export default function NetworkGraph({
         },
         edges: {
           width: 1,
-          color: { color: '#444', highlight: '#d32f2f', hover: '#666' },
+          color: { color: '#444', highlight: '#e53935', hover: '#666' },
           smooth: { enabled: true, type: 'continuous', roundness: 0.5 },
         },
         physics: {
@@ -222,7 +224,7 @@ export default function NetworkGraph({
         nodeConfig.size = 24;
         nodeConfig.borderWidth = 2;
         nodeConfig.color = {
-          border: '#d32f2f',
+          border: '#e53935',
           highlight: { border: '#ff4d4d' },
           hover: { border: '#ff4d4d' },
         };
@@ -524,14 +526,14 @@ export default function NetworkGraph({
       <div
         ref={containerRef}
         className="network-graph-container"
-        style={{ width: '100%', height: '100%', background: '#0e0e0e' }}
+        style={{ width: '100%', height: '100%', background: '#08090c' }}
       />
       <div className="network-fab-group">
         <button
           className="network-fab"
           onClick={handleFit}
-          title="Center view"
-          aria-label="Center view"
+          title={t('graph.center')}
+          aria-label={t('graph.center')}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -541,8 +543,8 @@ export default function NetworkGraph({
         <button
           className={`network-fab${labelsVisible ? '' : ' network-fab-off'}`}
           onClick={handleToggleLabels}
-          title={labelsVisible ? 'Hide labels' : 'Show labels'}
-          aria-label={labelsVisible ? 'Hide labels' : 'Show labels'}
+          title={labelsVisible ? t('graph.hideLabels') : t('graph.showLabels')}
+          aria-label={labelsVisible ? t('graph.hideLabels') : t('graph.showLabels')}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 7V4h16v3" />

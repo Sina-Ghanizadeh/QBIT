@@ -3,6 +3,7 @@ import type { OnlineUser } from '../types';
 import { POKE_TEMPLATES, QUICK_POKES } from '../lib/pokeTemplates';
 import { drawOledPreview, renderTextToBitmap } from '../lib/oledBitmap';
 import type { BitmapPayload } from './PokeDialog';
+import { useI18n } from '../i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -28,6 +29,7 @@ export default function PokeStudio({
   onPokeDevice,
   deviceMode,
 }: Props) {
+  const { t } = useI18n();
   const [text, setText] = useState('Hi!');
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [busy, setBusy] = useState(false);
@@ -101,10 +103,10 @@ export default function PokeStudio({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card poke-studio" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
-          <h2>Poke Studio</h2>
-          <button type="button" className="btn-text" onClick={onClose}>Close</button>
+          <h2>{t('poke.studio')}</h2>
+          <button type="button" className="btn-text" onClick={onClose}>{t('poke.close')}</button>
         </header>
-        <p className="page-sub">Preview the OLED layout, pick a template, or poke every online friend.</p>
+        <p className="page-sub">{t('poke.studioSub')}</p>
         <canvas ref={canvasRef} className="oled-preview" width={128} height={64} />
         <label className="field-label">
           Message
@@ -123,9 +125,9 @@ export default function PokeStudio({
           ))}
         </div>
         <div className="chip-row">
-          {POKE_TEMPLATES.map((t) => (
-            <button key={t.id} type="button" className="chip chip-secondary" onClick={() => setText(t.text)}>
-              {t.label}
+          {POKE_TEMPLATES.map((tmpl) => (
+            <button key={tmpl.id} type="button" className="chip chip-secondary" onClick={() => setText(tmpl.text)}>
+              {tmpl.label}
             </button>
           ))}
         </div>
@@ -146,7 +148,7 @@ export default function PokeStudio({
             disabled={busy || onlineFriendIds.length === 0 || !text.trim()}
             onClick={() => void pokeAllOnline()}
           >
-            Poke all online friends ({onlineFriendIds.length})
+            {busy ? t('poke.broadcasting') : `${t('poke.broadcast')} (${onlineFriendIds.length})`}
           </button>
         </div>
         {msg && <p className="page-sub">{msg}</p>}

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { OnlineUser } from '../types';
+import { useI18n } from '../i18n';
 
 interface Props {
   target: OnlineUser;
@@ -22,6 +23,7 @@ const QUICK_MESSAGES = [
 const MAX_LENGTH = 25;
 
 export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, isFriend, onRemoveFriend }: Props) {
+  const { t } = useI18n();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -67,14 +69,14 @@ export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, is
         </div>
         {!isLoggedIn ? (
           <div className="poke-login-msg">
-            Login from the top-right to send a poke.
+            {t('poke.login')}
           </div>
         ) : (
           <>
             <input
               className="poke-input"
               type="text"
-              placeholder="Type a message..."
+              placeholder={t('poke.typeMessage')}
               maxLength={MAX_LENGTH}
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -102,7 +104,7 @@ export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, is
               onClick={() => send(text)}
               disabled={!text.trim() || sending}
             >
-              {sending ? 'Sending...' : 'Send Poke'}
+              {sending ? t('poke.sending') : t('poke.send')}
             </button>
             {isFriend && onRemoveFriend && (
               <button
@@ -117,7 +119,7 @@ export default function UserPokeDialog({ target, onPoke, onClose, isLoggedIn, is
                 }}
                 disabled={removing}
               >
-                {removing ? 'Removing...' : 'Remove friend'}
+                {removing ? t('poke.removing') : t('poke.removeFriend')}
               </button>
             )}
           </>

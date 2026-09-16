@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { NetworkDeviceNode } from "../types";
+import { useI18n } from "../i18n";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -41,6 +42,7 @@ function utcHHMMToLocal(hhmm: string): string {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function RoutinesPanel() {
+  const { t } = useI18n();
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [devices, setDevices] = useState<NetworkDeviceNode[]>([]);
   const [friends, setFriends] = useState<FriendRow[]>([]);
@@ -146,13 +148,13 @@ export default function RoutinesPanel() {
 
   return (
     <section className="dash-section">
-      <h2>Routines</h2>
-      <p className="page-sub">Auto-poke your device or a friend on a daily/weekly schedule (times in your local timezone).</p>
+      <h2>{t('routines.title')}</h2>
+      <p className="page-sub">{t('routines.sub')}</p>
       {error && <div className="page-error">{error}</div>}
       <div className="dash-form-row routines-form">
         <select value={targetType} onChange={(e) => setTargetType(e.target.value as "device" | "user")}>
-          <option value="device">My device</option>
-          <option value="user">Friend</option>
+          <option value="device">{t('routines.myDevice')}</option>
+          <option value="user">{t('routines.friend')}</option>
         </select>
         <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
           {targetType === "device"
@@ -167,10 +169,10 @@ export default function RoutinesPanel() {
                 </option>
               ))}
         </select>
-        <input maxLength={25} value={text} onChange={(e) => setText(e.target.value)} placeholder="Poke text" />
+        <input maxLength={25} value={text} onChange={(e) => setText(e.target.value)} placeholder={t('routines.pokeText')} />
         <select value={cronType} onChange={(e) => setCronType(e.target.value as "daily" | "weekly")}>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
+          <option value="daily">{t('routines.daily')}</option>
+          <option value="weekly">{t('routines.weekly')}</option>
         </select>
         {cronType === "weekly" && (
           <select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>
@@ -183,11 +185,11 @@ export default function RoutinesPanel() {
         )}
         <input type="time" value={localTime} onChange={(e) => setLocalTime(e.target.value)} />
         <button type="button" className="btn-primary" disabled={busy || !targetId} onClick={() => void create()}>
-          Add
+          {t('routines.add')}
         </button>
       </div>
       {schedules.length === 0 ? (
-        <p className="page-sub">No routines yet.</p>
+        <p className="page-sub">{t('routines.empty')}</p>
       ) : (
         <ul className="dash-list">
           {schedules.map((s) => (
@@ -208,10 +210,10 @@ export default function RoutinesPanel() {
                     checked={s.enabled}
                     onChange={(e) => void toggle(s.id, e.target.checked)}
                   />
-                  <span>On</span>
+                  <span>{t('routines.on')}</span>
                 </label>
                 <button type="button" className="btn-text" onClick={() => void remove(s.id)}>
-                  Delete
+                  {t('routines.delete')}
                 </button>
               </div>
             </li>

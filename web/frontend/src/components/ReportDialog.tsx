@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { OnlineUser } from '../types';
+import { useI18n } from '../i18n';
 
 interface Props {
   onlineUsers: OnlineUser[];
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function ReportDialog({ onlineUsers, apiUrl, onClose, onSubmitted }: Props) {
+  const { t } = useI18n();
   const [reportedPublicUserId, setReportedPublicUserId] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,7 +22,7 @@ export default function ReportDialog({ onlineUsers, apiUrl, onClose, onSubmitted
       const uid = reportedPublicUserId.trim();
       const desc = description.trim();
       if (!uid || !desc) {
-        setError('Please select a user and enter a short description.');
+        setError(t('report.selectUser'));
         return;
       }
       if (desc.length > 500) {
@@ -42,22 +44,22 @@ export default function ReportDialog({ onlineUsers, apiUrl, onClose, onSubmitted
           return;
         }
         const data = await res.json();
-        setError(data.error || 'Failed to submit report');
+        setError(data.error || t('report.failed'));
       } catch {
-        setError('Network error');
+        setError(t('common.networkError'));
       } finally {
         setSubmitting(false);
       }
     },
-    [reportedPublicUserId, description, apiUrl, onClose, onSubmitted]
+    [reportedPublicUserId, description, apiUrl, onClose, onSubmitted, t]
   );
 
   return (
     <div className="poke-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="poke-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="poke-header">
-          <span className="poke-title">Report user</span>
-          <button className="poke-close" onClick={onClose} aria-label="Close">
+          <span className="poke-title">{t('report.title')}</span>
+          <button className="poke-close" onClick={onClose} aria-label={t('common.close')}>
             &times;
           </button>
         </div>
@@ -66,14 +68,14 @@ export default function ReportDialog({ onlineUsers, apiUrl, onClose, onSubmitted
         </p>
         <form onSubmit={handleSubmit} className="report-form">
           <label className="report-label">
-            User to report
+            {t('report.selectUser')}
             <select
               value={reportedPublicUserId}
               onChange={(e) => setReportedPublicUserId(e.target.value)}
               className="poke-input"
               required
             >
-              <option value="">Select online user...</option>
+              <option value="">{t('report.selectUser')}</option>
               {onlineUsers.map((u) => (
                 <option key={u.publicUserId} value={u.publicUserId}>
                   {u.displayName}
@@ -82,12 +84,12 @@ export default function ReportDialog({ onlineUsers, apiUrl, onClose, onSubmitted
             </select>
           </label>
           <label className="report-label">
-            Brief description of the issue
+            {t('report.reason')}
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="poke-input report-textarea"
-              placeholder="What happened?"
+              placeholder={t('report.reason')}
               maxLength={500}
               rows={4}
               required
@@ -97,10 +99,10 @@ export default function ReportDialog({ onlineUsers, apiUrl, onClose, onSubmitted
           {error && <p className="report-error" role="alert">{error}</p>}
           <div className="report-actions">
             <button type="button" className="btn report-cancel" onClick={onClose}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button type="submit" className="btn report-submit" disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit'}
+              {submitting ? t('common.loading') : t('report.submit')}
             </button>
           </div>
         </form>
